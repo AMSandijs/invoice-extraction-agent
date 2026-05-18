@@ -1,0 +1,8 @@
+azure-functions
+azure-identity
+azure-cosmos
+azure-search-documents
+openai
+pymupdf
+pdfplumber
+pillow
