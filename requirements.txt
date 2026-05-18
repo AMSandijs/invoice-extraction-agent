@@ -1,0 +1,20 @@
+# Invoice Data Extractor + Conversational Agent
+# Install with: pip install -r requirements.txt
+
+# --- Extraction (extractor.py) ---
+openai>=1.30.0          # GPT-4o API (text + vision)
+pdfplumber>=0.11.0      # Text extraction from text-based PDFs (Level 2)
+pdf2image>=1.17.0       # Convert scanned PDF pages to images (Level 3)
+Pillow>=10.0.0          # Image handling and encoding
+pandas>=2.0.0           # Tabular output / CSV export
+
+# --- Conversational agent (agent.py + app.py) ---
+streamlit>=1.35.0       # Browser chat UI
+
+# --- Notes ---
+# pdf2image also requires poppler to be installed on your system:
+#   macOS:   brew install poppler
+#   Ubuntu:  sudo apt-get install poppler-utils
+#   Windows: https://github.com/oschwartz10612/poppler-windows/releases
+#
+# sqlite3 is part of the Python standard library — no install needed.

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Environment / secrets — never commit these
+.env
+.env.*
+*.env
+
+# Extraction outputs — generated at runtime
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs
+*.log
