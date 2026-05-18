@@ -43,3 +43,11 @@ def test_extract_text_pdf_path(make_chat_client, text_pdf_bytes):
     data, method = extraction.extract(client, "gpt-4o", "invoice.pdf", text_pdf_bytes)
     assert data["supplier_name"] == "Acme Corp"
     assert method == "text+gpt4o"
+
+
+def test_extract_vision_pdf_path(make_chat_client, blank_pdf_bytes):
+    client = make_chat_client(_VALID_JSON)
+    data, method = extraction.extract(client, "gpt-4o", "scan.pdf", blank_pdf_bytes)
+    assert data["invoice_number"] == "INV-001"
+    assert method == "vision+gpt4o"
+    client.chat.completions.create.assert_called_once()
