@@ -59,3 +59,19 @@ def test_process_blob_extraction_failure_path():
     assert "Unsupported" in record["error"]
     cosmos_container.upsert_item.assert_called_once()
     search_client.upload_documents.assert_not_called()
+
+
+def test_process_blob_infra_error_propagates():
+    function_app._index_ensured = True  # skip index creation
+    openai_client = _chat_client('{"invoice_number": "INV-1", "supplier_name": "Acme"}')
+    cosmos_container = MagicMock()
+    cosmos_container.upsert_item.side_effect = RuntimeError("Cosmos timeout")
+    search_client = MagicMock()
+    index_client = MagicMock()
+
+    import pytest
+    with pytest.raises(RuntimeError, match="Cosmos timeout"):
+        function_app.process_blob(
+            "invoice.png", _png(), _CONFIG,
+            openai_client, cosmos_container, search_client, index_client,
+        )
