@@ -138,6 +138,27 @@ class InvoiceAgent:
         self._history.append({"role": "assistant", "content": answer})
         return AgentResponse(answer=answer, results=docs)
 
+    def get_stats(self) -> dict:
+        """Return index doc count + distinct currencies via a Search facet query.
+
+        Returns an empty dict if the index cannot be reached.
+        """
+        try:
+            results = self.search_client.search(
+                search_text="*",
+                facets=["currency"],
+                top=0,
+                include_total_count=True,
+            )
+            facets = results.get_facets() or {}
+            currencies = [f["value"] for f in facets.get("currency", [])]
+            return {
+                "total_invoices": results.get_count(),
+                "currencies": currencies,
+            }
+        except Exception:
+            return {}
+
 
 def build_agent() -> InvoiceAgent:
     """Construct an InvoiceAgent from environment config, using AAD auth."""

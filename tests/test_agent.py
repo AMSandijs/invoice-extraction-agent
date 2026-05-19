@@ -111,3 +111,26 @@ def test_ask_handles_answer_generation_failure(mock_clients):
     assert response.error == "model error"
     assert response.results == [{"id": "1"}]
     assert "couldn't generate" in response.answer.lower()
+
+
+def test_get_stats_parses_facets(mock_clients):
+    search, openai = mock_clients
+    paged = MagicMock()
+    paged.get_count.return_value = 4
+    paged.get_facets.return_value = {
+        "currency": [{"value": "EUR", "count": 3}, {"value": "USD", "count": 1}]
+    }
+    search.search.return_value = paged
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    stats = agent.get_stats()
+
+    assert stats == {"total_invoices": 4, "currencies": ["EUR", "USD"]}
+
+
+def test_get_stats_returns_empty_on_failure(mock_clients):
+    search, openai = mock_clients
+    search.search.side_effect = RuntimeError("unreachable")
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    assert agent.get_stats() == {}
