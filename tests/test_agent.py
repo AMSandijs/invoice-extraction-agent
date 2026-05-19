@@ -71,3 +71,43 @@ def test_ask_returns_answer_and_records(mock_clients):
         {"role": "user", "content": "What is the total?"},
         {"role": "assistant", "content": "The total is 6875.00 EUR."},
     ]
+
+
+def test_ask_handles_empty_index(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = []
+    openai.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="No invoices are indexed yet."))]
+    )
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    response = agent.ask("How many invoices?")
+
+    assert response.results == []
+    assert response.error is None
+    assert "no invoices" in response.answer.lower()
+
+
+def test_ask_handles_retrieval_failure(mock_clients):
+    search, openai = mock_clients
+    search.search.side_effect = RuntimeError("search unreachable")
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    response = agent.ask("What is the total?")
+
+    assert response.error == "search unreachable"
+    assert response.results is None
+    assert "couldn't reach" in response.answer.lower()
+
+
+def test_ask_handles_answer_generation_failure(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = [{"id": "1"}]
+    openai.chat.completions.create.side_effect = RuntimeError("model error")
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    response = agent.ask("What is the total?")
+
+    assert response.error == "model error"
+    assert response.results == [{"id": "1"}]
+    assert "couldn't generate" in response.answer.lower()
