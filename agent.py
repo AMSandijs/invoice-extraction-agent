@@ -101,6 +101,43 @@ class InvoiceAgent:
         )
         return [dict(doc) for doc in results]
 
+    def _generate_answer(self, question: str, docs: list[dict]) -> str:
+        """Ask GPT-4o to answer the question from the retrieved invoice docs."""
+        records_text = json.dumps(docs, indent=2, default=str) if docs else "[]"
+        messages = [
+            {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+            *self._history[-HISTORY_LIMIT:],
+            {
+                "role": "user",
+                "content": f"Question: {question}\n\nInvoice records:\n{records_text}",
+            },
+        ]
+        response = self.openai_client.chat.completions.create(
+            model=self.gpt_deployment, messages=messages, temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+
+    def ask(self, question: str) -> AgentResponse:
+        """Retrieve invoices for the question and return a generated answer."""
+        try:
+            docs = self.retrieve(question)
+        except Exception as e:
+            return AgentResponse(
+                answer="I couldn't reach the invoice search index. Please try again.",
+                error=str(e),
+            )
+        try:
+            answer = self._generate_answer(question, docs)
+        except Exception as e:
+            return AgentResponse(
+                answer="I retrieved the invoices but couldn't generate an answer.",
+                results=docs,
+                error=str(e),
+            )
+        self._history.append({"role": "user", "content": question})
+        self._history.append({"role": "assistant", "content": answer})
+        return AgentResponse(answer=answer, results=docs)
+
 
 def build_agent() -> InvoiceAgent:
     """Construct an InvoiceAgent from environment config, using AAD auth."""

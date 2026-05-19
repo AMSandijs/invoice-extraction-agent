@@ -51,3 +51,23 @@ def test_build_agent_missing_env_raises(monkeypatch):
         monkeypatch.delenv(var, raising=False)
     with pytest.raises(EnvironmentError):
         build_agent()
+
+
+def test_ask_returns_answer_and_records(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = [{"id": "1", "total_amount": 6875.0}]
+    openai.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="The total is 6875.00 EUR."))]
+    )
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    response = agent.ask("What is the total?")
+
+    assert response.answer == "The total is 6875.00 EUR."
+    assert response.results == [{"id": "1", "total_amount": 6875.0}]
+    assert response.error is None
+    # The question and answer are recorded for follow-up context.
+    assert agent._history == [
+        {"role": "user", "content": "What is the total?"},
+        {"role": "assistant", "content": "The total is 6875.00 EUR."},
+    ]
