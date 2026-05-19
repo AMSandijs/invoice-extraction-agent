@@ -5,8 +5,19 @@
       "samplingSettings": { "isEnabled": true, "excludedTypes": "Request" }
     }
   },
+  "extensions": {
+    "blobs": {
+      "maxDegreeOfParallelism": 4
+    }
+  },
   "extensionBundle": {
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
     "version": "[4.*, 5.0.0)"
+  },
+  "retry": {
+    "strategy": "exponentialBackoff",
+    "maxRetryCount": 3,
+    "minimumInterval": "00:00:05",
+    "maximumInterval": "00:05:00"
   }
 }

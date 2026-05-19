@@ -6,6 +6,7 @@ an upsert to Cosmos DB, and a push to the Azure AI Search index.
 
 import logging
 import os
+import threading
 
 import azure.functions as func
 from azure.cosmos import CosmosClient
@@ -22,6 +23,7 @@ app = func.FunctionApp()
 
 # Ensures the Search index is created once per worker process (cold start).
 _index_ensured = False
+_index_lock = threading.Lock()
 
 
 def load_config() -> dict:
@@ -73,9 +75,10 @@ def process_blob(blob_name, data, config, openai_client, cosmos_container,
     infrastructure errors propagate so the Functions host retries the blob.
     """
     global _index_ensured
-    if not _index_ensured:
-        search_indexer.ensure_index(index_client, config["search_index"])
-        _index_ensured = True
+    with _index_lock:
+        if not _index_ensured:
+            search_indexer.ensure_index(index_client, config["search_index"])
+            _index_ensured = True
 
     try:
         extracted, method = extraction.extract(
