@@ -50,3 +50,9 @@ variable "tags" {
     managed-by  = "opentofu"
   }
 }
+
+variable "agent_user_object_ids" {
+  description = "Azure AD object IDs of users allowed to run the local RAG agent."
+  type        = list(string)
+  default     = []
+}

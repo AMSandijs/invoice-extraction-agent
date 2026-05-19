@@ -41,3 +41,20 @@ resource "azurerm_cosmosdb_sql_role_assignment" "func_cosmos" {
   principal_id       = local.func_principal_id
   scope              = azurerm_cosmosdb_account.cosmos.id
 }
+
+# --- Agent users: data-plane read access for the local RAG agent ---------
+# Each listed user can query AI Search and call Azure OpenAI as themselves.
+
+resource "azurerm_role_assignment" "agent_search_read" {
+  for_each             = toset(var.agent_user_object_ids)
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Index Data Reader"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "agent_openai_user" {
+  for_each             = toset(var.agent_user_object_ids)
+  scope                = azurerm_cognitive_account.openai.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = each.value
+}
