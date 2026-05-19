@@ -1,10 +1,12 @@
+import hashlib
 from unittest.mock import MagicMock
 
 import cosmos_writer
 
 
 def test_record_id_is_deterministic():
-    assert cosmos_writer.record_id("a.pdf") == cosmos_writer.record_id("a.pdf")
+    expected = hashlib.sha256("a.pdf".encode("utf-8")).hexdigest()
+    assert cosmos_writer.record_id("a.pdf") == expected
     assert cosmos_writer.record_id("a.pdf") != cosmos_writer.record_id("b.pdf")
 
 
@@ -18,7 +20,8 @@ def test_build_record_extracted():
     assert record["method"] == "text+gpt4o"
     assert record["status"] == "extracted"
     assert record["error"] is None
-    assert record["processed_at"]  # ISO timestamp present
+    from datetime import datetime
+    datetime.fromisoformat(record["processed_at"])  # raises if not valid ISO-8601
 
 
 def test_build_record_missing_supplier_defaults_to_unknown():

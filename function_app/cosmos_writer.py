@@ -23,7 +23,7 @@ INVOICE_FIELDS = [
 
 def record_id(blob_name: str) -> str:
     """A deterministic document id, so re-uploading a file upserts cleanly."""
-    return hashlib.sha1(blob_name.encode("utf-8")).hexdigest()
+    return hashlib.sha256(blob_name.encode("utf-8")).hexdigest()
 
 
 def build_record(
@@ -52,4 +52,5 @@ def build_record(
 
 def upsert(container, record: dict) -> None:
     """Upsert a record into the Cosmos container."""
+    # Return value (upserted document with _etag/_ts) is intentionally ignored.
     container.upsert_item(record)
