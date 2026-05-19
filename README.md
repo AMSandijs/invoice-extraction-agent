@@ -13,7 +13,7 @@ It can run two ways:
 | Extraction | `extractor.py` over a local folder → CSV | Blob upload → Azure Function (GPT-4o) |
 | Storage | CSV file | Azure Cosmos DB |
 | Query | — | Azure AI Search + GPT-4o, via a Streamlit chat agent |
-| Cloud setup | none | OpenTofu-provisioned, managed-identity auth |
+| Cloud setup | OpenAI API key only | OpenTofu-provisioned Azure resources, managed-identity auth |
 
 The local pipeline is the quickest way to run just the mandatory extraction.
 The Azure backend is the full Option 2 solution: upload an invoice and chat with it.
@@ -38,7 +38,8 @@ The Azure backend is the full Option 2 solution: upload an invoice and chat with
 ## Part 1 — Local extraction (mandatory part)
 
 `extractor.py` pulls structured data from a folder of invoice PDFs/images using
-GPT-4o and writes a CSV. No cloud setup required.
+GPT-4o and writes a CSV. No Azure infrastructure required — just an OpenAI (or
+Azure OpenAI) API key.
 
 ### How it works
 
