@@ -27,6 +27,18 @@ def test_build_content_summary_includes_core_fields():
     assert "Widget" in summary
 
 
+def test_build_content_summary_zero_amount_not_suppressed():
+    record = {
+        "invoice_number": "INV-0",
+        "supplier_name": "Acme",
+        "total_amount": 0.0,
+        "currency": "EUR",
+    }
+    summary = search_indexer.build_content_summary(record)
+    assert "0.0" in summary
+    assert "n/a" not in summary.split("total")[1]
+
+
 def test_build_search_document_maps_fields_and_floats():
     record = {
         "id": "abc",

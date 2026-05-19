@@ -1,4 +1,4 @@
-"""Azure AI Search: index schema, content summary, embedding, and document push."""
+"""Azure AI Search: index schema, content summary, and document builder."""
 
 from azure.search.documents.indexes.models import (
     HnswAlgorithmConfiguration,
@@ -27,6 +27,7 @@ def build_index(index_name: str) -> SearchIndex:
         SearchableField(name="invoice_number", type=SearchFieldDataType.String, filterable=True),
         SearchableField(name="po_number", type=SearchFieldDataType.String, filterable=True),
         SimpleField(name="currency", type=SearchFieldDataType.String, filterable=True),
+        # Dates stored as strings; sort/range correctness requires ISO-8601 (YYYY-MM-DD) format upstream.
         SimpleField(name="invoice_date", type=SearchFieldDataType.String, filterable=True, sortable=True),
         SimpleField(name="due_date", type=SearchFieldDataType.String, filterable=True, sortable=True),
         SimpleField(name="total_amount", type=SearchFieldDataType.Double, filterable=True, sortable=True),
@@ -54,7 +55,7 @@ def build_index(index_name: str) -> SearchIndex:
     return SearchIndex(name=index_name, fields=fields, vector_search=vector_search)
 
 
-def _as_float(value):
+def _as_float(value: object) -> "float | None":
     """Coerce a value to float, or None if it is missing/unparseable."""
     if value is None:
         return None
@@ -67,12 +68,13 @@ def _as_float(value):
 def build_content_summary(record: dict) -> str:
     """Synthesize a plain-text paragraph describing an invoice — the text
     that gets embedded for vector search."""
+    amount = record.get("total_amount")
     parts = [
         f"Invoice {record.get('invoice_number') or 'n/a'}",
         f"from supplier {record.get('supplier_name') or 'unknown'}",
         f"to buyer {record.get('buyer_name') or 'n/a'}",
         f"dated {record.get('invoice_date') or 'n/a'}",
-        f"total {record.get('total_amount') or 'n/a'} {record.get('currency') or ''}".strip(),
+        f"total {amount if amount is not None else 'n/a'} {record.get('currency') or ''}".strip(),
     ]
     line_items = record.get("line_items")
     if isinstance(line_items, list) and line_items:
