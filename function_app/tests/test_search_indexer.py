@@ -61,3 +61,39 @@ def test_build_search_document_maps_fields_and_floats():
     assert doc["total_amount"] == 500.0
     assert doc["subtotal"] is None
     assert doc["tax_amount"] is None  # unparseable value coerced to None
+
+
+from unittest.mock import MagicMock
+
+
+def test_ensure_index_creates_or_updates():
+    index_client = MagicMock()
+    search_indexer.ensure_index(index_client, "invoices-idx")
+    index_client.create_or_update_index.assert_called_once()
+    created = index_client.create_or_update_index.call_args[0][0]
+    assert created.name == "invoices-idx"
+
+
+def test_embed_returns_vector():
+    openai_client = MagicMock()
+    openai_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.1, 0.2])]
+    vector = search_indexer.embed(openai_client, "text-embedding-3-large", "hello")
+    assert vector == [0.1, 0.2]
+    openai_client.embeddings.create.assert_called_once_with(
+        model="text-embedding-3-large", input="hello"
+    )
+
+
+def test_index_record_embeds_and_uploads():
+    search_client = MagicMock()
+    openai_client = MagicMock()
+    openai_client.embeddings.create.return_value.data = [MagicMock(embedding=[0.3])]
+    record = {"id": "abc", "supplier_name": "Acme", "invoice_number": "INV-1"}
+
+    search_indexer.index_record(search_client, openai_client, "text-embedding-3-large", record)
+
+    search_client.upload_documents.assert_called_once()
+    uploaded = search_client.upload_documents.call_args.kwargs["documents"][0]
+    assert uploaded["id"] == "abc"
+    assert uploaded["content_vector"] == [0.3]
+    assert uploaded["content"]  # summary populated

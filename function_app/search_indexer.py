@@ -106,3 +106,22 @@ def build_search_document(record: dict, content: str, vector: list) -> dict:
     for field in NUMERIC_FIELDS:
         doc[field] = _as_float(record.get(field))
     return doc
+
+
+def ensure_index(index_client, index_name: str) -> None:
+    """Create the index, or update it to match the schema. Idempotent."""
+    index_client.create_or_update_index(build_index(index_name))
+
+
+def embed(openai_client, deployment: str, text: str) -> list:
+    """Return the embedding vector for `text`."""
+    response = openai_client.embeddings.create(model=deployment, input=text)
+    return response.data[0].embedding
+
+
+def index_record(search_client, openai_client, embed_deployment: str, record: dict) -> None:
+    """Embed an invoice record's summary and push the document to Search."""
+    content = build_content_summary(record)
+    vector = embed(openai_client, embed_deployment, content)
+    document = build_search_document(record, content, vector)
+    search_client.upload_documents(documents=[document])
