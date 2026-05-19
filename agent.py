@@ -79,7 +79,7 @@ class InvoiceAgent:
         self.embedding_deployment = embedding_deployment
         self._history: list[dict] = []
 
-    def _embed(self, text: str) -> list:
+    def _embed(self, text: str) -> list[float]:
         """Return the embedding vector for `text`."""
         response = self.openai_client.embeddings.create(
             model=self.embedding_deployment, input=text

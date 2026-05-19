@@ -73,6 +73,23 @@ def test_ask_returns_answer_and_records(mock_clients):
     ]
 
 
+def test_ask_passes_prior_history_into_followup_prompt(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = [{"id": "1"}]
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    agent.ask("first question")
+    agent.ask("follow-up question")
+
+    messages = openai.chat.completions.create.call_args.kwargs["messages"]
+    # System prompt, then the prior turn, then the current question.
+    assert messages[0]["role"] == "system"
+    assert {"role": "user", "content": "first question"} in messages
+    assert {"role": "assistant", "content": "Test answer."} in messages
+    assert messages[-1]["role"] == "user"
+    assert "follow-up question" in messages[-1]["content"]
+
+
 def test_ask_handles_empty_index(mock_clients):
     search, openai = mock_clients
     search.search.return_value = []
