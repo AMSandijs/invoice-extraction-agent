@@ -12,7 +12,8 @@ build/
 
 # Environment / secrets — never commit these
 .env
-.env.*
+.env.local
+.env.*.local
 *.env
 
 # Extraction outputs — generated at runtime

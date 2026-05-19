@@ -1,27 +1,15 @@
-"""
-Invoice Assistant — Streamlit Chat UI
-======================================
-Browser-based conversational interface for querying extracted invoice data.
+"""Invoice Assistant — Streamlit chat UI over Azure AI Search (Phase 2 RAG).
 
 Run with:
     streamlit run app.py
-    streamlit run app.py -- --db my_invoices.db   # custom DB path
-"""
 
-import sys
-import json
-import sqlite3
-import argparse
-from pathlib import Path
+Requires a .env file with the Phase 2 endpoints (see .env.sample) and an
+active `az login` session.
+"""
 
 import streamlit as st
 
-from agent import InvoiceAgent
-
-
-# ---------------------------------------------------------------------------
-# Page config (must be first Streamlit call)
-# ---------------------------------------------------------------------------
+from agent import build_agent, InvoiceAgent
 
 st.set_page_config(
     page_title="Invoice Assistant",
@@ -30,102 +18,53 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# ---------------------------------------------------------------------------
-# DB path from CLI args (streamlit passes args after --)
-# ---------------------------------------------------------------------------
-
-def get_db_path() -> str:
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--db", default="invoices.db")
-    args, _ = parser.parse_known_args()
-    return args.db
-
-
-DB_PATH = get_db_path()
-
-
-# ---------------------------------------------------------------------------
-# Session state initialisation
-# ---------------------------------------------------------------------------
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "agent" not in st.session_state:
     try:
-        st.session_state.agent = InvoiceAgent(db_path=DB_PATH)
+        st.session_state.agent = build_agent()
         st.session_state.agent_error = None
     except EnvironmentError as e:
         st.session_state.agent = None
         st.session_state.agent_error = str(e)
 
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
+# --- Sidebar -------------------------------------------------------------
 
 with st.sidebar:
     st.title("🧾 Invoice Assistant")
-    st.caption("Ask questions about your extracted invoice data in plain English.")
-
+    st.caption("Ask questions about your invoice data in plain English.")
     st.divider()
 
-    # DB status
-    db_exists = Path(DB_PATH).exists()
-    if not db_exists:
-        st.error(f"Database not found: `{DB_PATH}`")
-        st.info(
-            "Run the extractor and store steps first:\n\n"
-            "```bash\n"
-            "python extractor.py ./invoices\n"
-            "python store.py extracted_invoices.csv\n"
-            "```"
-        )
-    elif st.session_state.agent_error:
-        st.error("API provider not configured")
+    if st.session_state.agent_error:
+        st.error("Agent not configured")
         st.code(st.session_state.agent_error)
         st.info(
-            "Set your API credentials:\n\n"
-            "**Azure AI Foundry:**\n"
-            "```bash\n"
-            "export AZURE_OPENAI_ENDPOINT=...\n"
-            "export AZURE_OPENAI_API_KEY=...\n"
-            "export AZURE_OPENAI_DEPLOYMENT=gpt-4o\n"
-            "```\n\n"
-            "**Standard OpenAI:**\n"
-            "```bash\n"
-            "export OPENAI_API_KEY=sk-...\n"
-            "```"
+            "Copy `.env.sample` to `.env`, fill in the Phase 2 endpoints "
+            "(`cd infra && tofu output`), and sign in with `az login`."
         )
     else:
-        st.success(f"Connected: `{DB_PATH}`")
-
-        # DB stats
         agent: InvoiceAgent = st.session_state.agent
         stats = agent.get_stats()
-
-        if stats:
-            st.subheader("Database")
-            col1, col2 = st.columns(2)
-            col1.metric("Invoices", stats.get("total_invoices", "—"))
-            col2.metric("Suppliers", stats.get("suppliers", "—"))
-
-            total_val = stats.get("total_value")
+        if not stats:
+            st.error("Could not reach the AI Search index.")
+            st.info("Check `SEARCH_ENDPOINT` in `.env` and that `az login` has run.")
+        else:
+            st.success("Connected to AI Search")
+            st.subheader("Index")
+            st.metric("Invoices indexed", stats.get("total_invoices", "—"))
             currencies = ", ".join(stats.get("currencies") or [])
-            if total_val is not None:
-                st.metric("Total Value", f"{total_val:,.2f} ({currencies})")
+            if currencies:
+                st.caption(f"Currencies: {currencies}")
 
     st.divider()
-
-    # Example questions
     st.subheader("Example questions")
     example_questions = [
         "What is the total amount across all invoices?",
         "Which supplier has the highest total invoice value?",
         "List all invoices in EUR with their amounts.",
         "How many invoices have tax charged?",
-        "Show me all invoices from this month.",
         "What is the average invoice amount?",
     ]
     for q in example_questions:
@@ -133,98 +72,56 @@ with st.sidebar:
             st.session_state.pending_question = q
 
     st.divider()
-
-    # Clear chat
     if st.button("🗑️ Clear chat", use_container_width=True):
         st.session_state.messages = []
         if st.session_state.agent:
-            st.session_state.agent._conversation_history = []
+            st.session_state.agent._history = []
         st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Main chat area
-# ---------------------------------------------------------------------------
+# --- Main chat area ------------------------------------------------------
 
 st.header("Invoice Assistant", divider="gray")
 
-# Render existing messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
-
-        # Show SQL expander for assistant messages that have it
-        if msg["role"] == "assistant" and msg.get("sql"):
-            with st.expander("🔍 SQL query used", expanded=False):
-                st.code(msg["sql"], language="sql")
-
-        # Show raw results if present
         if msg["role"] == "assistant" and msg.get("results"):
-            results = msg["results"]
-            if len(results) > 0 and len(results) <= 50:
-                with st.expander(f"📋 Raw results ({len(results)} row(s))", expanded=False):
-                    st.json(results)
+            with st.expander(
+                f"📋 Retrieved invoices ({len(msg['results'])})", expanded=False
+            ):
+                st.json(msg["results"])
 
-
-# ---------------------------------------------------------------------------
-# Handle input — either from chat box or example button
-# ---------------------------------------------------------------------------
-
-# Grab pending question from sidebar button press
 pending = st.session_state.pop("pending_question", None)
 user_input = st.chat_input("Ask about your invoices…") or pending
 
 if user_input:
-    # Show user message immediately
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # Block if no DB or no agent
-    if not db_exists:
-        reply = {
-            "role": "assistant",
-            "content": "⚠️ No invoice database found. Run `extractor.py` and `store.py` first.",
-        }
-        st.session_state.messages.append(reply)
-        with st.chat_message("assistant"):
-            st.markdown(reply["content"])
-        st.stop()
-
     if st.session_state.agent is None:
-        reply = {
-            "role": "assistant",
-            "content": "⚠️ API credentials not configured. See the sidebar for instructions.",
-        }
-        st.session_state.messages.append(reply)
+        reply = "⚠️ Agent not configured. See the sidebar for setup instructions."
+        st.session_state.messages.append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
-            st.markdown(reply["content"])
+            st.markdown(reply)
         st.stop()
 
-    # Run agent
     with st.chat_message("assistant"):
-        with st.spinner("Thinking…"):
-            agent: InvoiceAgent = st.session_state.agent
-            response = agent.ask(user_input)
-
+        with st.spinner("Searching invoices…"):
+            response = st.session_state.agent.ask(user_input)
         st.markdown(response.answer)
-
-        if response.sql:
-            with st.expander("🔍 SQL query used", expanded=False):
-                st.code(response.sql, language="sql")
-
-        if response.results and len(response.results) <= 50:
-            with st.expander(f"📋 Raw results ({len(response.results)} row(s))", expanded=False):
+        if response.results:
+            with st.expander(
+                f"📋 Retrieved invoices ({len(response.results)})", expanded=False
+            ):
                 st.json(response.results)
-
         if response.error:
             with st.expander("⚠️ Error details", expanded=False):
                 st.code(response.error)
 
-    # Save to history
     st.session_state.messages.append({
         "role": "assistant",
         "content": response.answer,
-        "sql": response.sql,
         "results": response.results,
     })
