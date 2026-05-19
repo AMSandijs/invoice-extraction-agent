@@ -1,14 +1,46 @@
-# Invoice Data Extractor + Conversational Agent
+# Invoice Data Extraction & RAG Agent
 
-Three-step pipeline: **extract → store → chat**.
+Home-assignment solution:
 
-1. `extractor.py` — pulls structured data from invoice PDFs/images using GPT-4o
-2. `store.py` — loads the extracted CSV into a local SQLite database
-3. `app.py` — Streamlit browser UI to query the data in plain English
+- **Mandatory part** — extract structured data from invoice documents.
+- **Optional Part, Option 2** — a conversational RAG agent that answers questions
+  about the extracted invoices in plain English.
+
+It can run two ways:
+
+| | Local pipeline (Phase 1) | Azure backend + RAG agent (Phase 2) |
+|---|---|---|
+| Extraction | `extractor.py` over a local folder → CSV | Blob upload → Azure Function (GPT-4o) |
+| Storage | CSV file | Azure Cosmos DB |
+| Query | — | Azure AI Search + GPT-4o, via a Streamlit chat agent |
+| Cloud setup | none | OpenTofu-provisioned, managed-identity auth |
+
+The local pipeline is the quickest way to run just the mandatory extraction.
+The Azure backend is the full Option 2 solution: upload an invoice and chat with it.
 
 ---
 
-## How the extractor works
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `extractor.py` | Local extractor — invoice files → structured CSV (Phase 1) |
+| `store.py` | Legacy Phase 1 CSV→SQLite loader. Retained for reference; not used by the RAG agent. |
+| `agent.py` | RAG agent — hybrid retrieval over Azure AI Search + GPT-4o |
+| `app.py` | Streamlit chat UI for the RAG agent |
+| `function_app/` | Azure Function `process_invoice` — blob-triggered ingestion |
+| `infra/` | OpenTofu/Terraform for all Azure resources |
+| `tests/` | Unit tests for the RAG agent |
+| `docs/superpowers/` | Design specs and implementation plans |
+
+---
+
+## Part 1 — Local extraction (mandatory part)
+
+`extractor.py` pulls structured data from a folder of invoice PDFs/images using
+GPT-4o and writes a CSV. No cloud setup required.
+
+### How it works
 
 | File type | Detection | Strategy |
 |---|---|---|
@@ -16,100 +48,46 @@ Three-step pipeline: **extract → store → chat**.
 | Scanned PDF | < 200 chars extractable | `pdf2image` → GPT-4o Vision |
 | Image file (PNG, JPG, …) | file extension | GPT-4o Vision directly |
 
-The script auto-detects which path to use — you just point it at a folder.
+The script auto-detects which path to use — point it at a folder.
 
----
+### Setup
 
-## Setup
+**1. System dependency** (only for the scanned-PDF path)
 
-### 1. System dependency (for scanned PDF support)
-
-**macOS**
 ```bash
-brew install poppler
+brew install poppler                 # macOS
+sudo apt-get install poppler-utils   # Ubuntu / Debian
 ```
+Windows: download from https://github.com/oschwartz10612/poppler-windows/releases
+and add the `bin/` folder to your PATH.
 
-**Ubuntu / Debian**
-```bash
-sudo apt-get install poppler-utils
-```
-
-**Windows**  
-Download from https://github.com/oschwartz10612/poppler-windows/releases and add the `bin/` folder to your PATH.
-
-### 2. Python dependencies
-
-Requires Python 3.10+.
+**2. Python dependencies** (Python 3.10+)
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. API provider — choose one
+**3. API provider** — set one:
 
-**Option A: Standard OpenAI**
 ```bash
-export OPENAI_API_KEY=sk-...                         # macOS / Linux
-set OPENAI_API_KEY=sk-...                            # Windows CMD
-$env:OPENAI_API_KEY="sk-..."                         # Windows PowerShell
-```
+# Standard OpenAI
+export OPENAI_API_KEY=sk-...
 
-**Option B: Azure AI Foundry (Azure OpenAI Service)**
-```bash
+# OR Azure OpenAI (takes priority if set)
 export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 export AZURE_OPENAI_API_KEY=your-azure-key
-export AZURE_OPENAI_DEPLOYMENT=gpt-4o        # your deployment name in Foundry
-export AZURE_OPENAI_API_VERSION=2024-12-01-preview   # optional, this is the default
+export AZURE_OPENAI_DEPLOYMENT=gpt-4o
+export AZURE_OPENAI_API_VERSION=2024-12-01-preview
 ```
 
-The script auto-detects which provider to use. `AZURE_OPENAI_ENDPOINT` takes priority if set.
+### Usage
 
----
-
-## Usage
-
-### Step 1 — Extract invoice data
 ```bash
 python extractor.py ./invoices
 python extractor.py ./invoices --output my_results.csv   # custom output name
 ```
 
-### Step 2 — Load into database
-```bash
-python store.py extracted_invoices.csv
-python store.py my_results.csv --db invoices.db          # custom DB name
-```
-
-### Step 3 — Launch the chat UI
-```bash
-streamlit run app.py
-streamlit run app.py -- --db invoices.db                 # custom DB name
-```
-
-Then open http://localhost:8501 in your browser.
-
-### Example output (console)
-
-```
-Found 5 invoice file(s) in 'invoices'. Starting extraction...
-
-  [01/05] invoice_001.pdf  →  ✓  (text+gpt4o)   | #INV-2024-001 | Acme Corp | 1250.00 EUR
-  [02/05] invoice_002.pdf  →  ✓  (vision+gpt4o)  | #2024/55      | Beta Ltd  | 890.50 USD
-  [03/05] scan_march.pdf   →  ✓  (vision+gpt4o)  | #M-0033       | Gamma GmbH| 3400.00 EUR
-  [04/05] receipt.png      →  ✓  (vision+gpt4o)  | #RC-99        | Delta Inc | 45.00 GBP
-  [05/05] broken.pdf       →  ✗  ERROR: ...
-
-────────────────────────────────────────────────────
-✓  Extraction complete.  Results written to: extracted_invoices.csv
-   Total files : 5
-   Successful  : 4
-   Errors      : 1
-────────────────────────────────────────────────────
-```
-
----
-
-## Output CSV columns
+### Output CSV columns
 
 | Column | Description |
 |---|---|
@@ -132,11 +110,93 @@ Found 5 invoice file(s) in 'invoices'. Starting extraction...
 
 ---
 
+## Part 2 — Azure backend + RAG agent (Optional Part, Option 2)
+
+Invoices uploaded to Blob Storage are processed automatically and become
+queryable through a chat agent.
+
+### Architecture
+
+```
+Blob Storage (invoices container)
+        ↓  blob trigger
+Azure Function  process_invoice
+        ↓  GPT-4o extraction (text + vision)
+Azure Cosmos DB        ← structured invoice records
+        ↓
+Azure AI Search        ← hybrid keyword + vector index
+        ↓
+RAG agent (agent.py)   ← AI Search retrieval + GPT-4o → Streamlit chat (app.py)
+```
+
+Resource-to-resource calls use managed identity; no keys are stored.
+
+### Deploy the infrastructure
+
+```bash
+cd infra
+tofu init
+tofu plan
+tofu apply
+```
+
+This provisions the resource group, Storage, Function App, Azure OpenAI
+(GPT-4o + `text-embedding-3-large`), Cosmos DB, and AI Search. Endpoints are
+exposed via `tofu output`.
+
+### Deploy the Function
+
+```bash
+cd function_app
+func azure functionapp publish <function_app_name>   # name from `tofu output`
+```
+
+Uploading an invoice to the `invoices` blob container then triggers extraction
+end-to-end into Cosmos DB and the AI Search index.
+
+### Run the RAG agent
+
+The agent authenticates to Azure with your `az login` session (Entra ID) — no
+secrets on disk. Your user needs the `Search Index Data Reader` and
+`Cognitive Services OpenAI User` roles (managed in `infra/rbac.tf`).
+
+```bash
+cp .env.sample .env          # then fill in endpoints from `cd infra && tofu output`
+az login
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Open http://localhost:8501 and ask questions like *"What is the total amount for
+invoices from Supplier X?"* or *"Which supplier has the highest total?"*
+
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/                  # RAG agent
+pytest function_app/tests/     # ingestion Function (needs function_app deps)
+```
+
+---
+
 ## Design decisions
 
-- **One pipeline for both levels**: complexity is auto-detected at runtime rather than requiring the user to pre-sort files. This makes the solution more practical in real-world use.
-- **GPT-4o for both paths**: avoids maintaining two separate ML stacks. The same model handles text understanding (Level 2) and OCR + understanding (Level 3 vision).
-- **`response_format: json_object`**: forces the model to return valid JSON — eliminates the need for fragile post-processing or regex cleanup.
-- **`temperature=0`**: deterministic outputs for better repeatability across runs.
-- **`detail: high` for vision**: ensures GPT-4o reads fine print, small fonts, and dense table data accurately.
-- **`MAX_VISION_PAGES = 4`**: caps API cost on multi-page documents while covering virtually all real invoices.
+**Extraction**
+
+- **One pipeline, auto-detected complexity** — text PDF, scanned PDF, and image
+  are detected at runtime rather than requiring the user to pre-sort files.
+- **GPT-4o for every path** — one model handles both text understanding and
+  OCR + understanding, avoiding two separate ML stacks.
+- **`response_format: json_object`** — forces valid JSON, no fragile regex cleanup.
+- **`temperature=0`** — deterministic, repeatable extraction.
+- **`MAX_VISION_PAGES = 4`** — caps API cost on multi-page documents.
+
+**RAG agent**
+
+- **Hybrid retrieval** — keyword + vector search over an invoice-summary index,
+  so vague questions still find the right records.
+- **Big top-k** — retrieves up to 50 records so GPT-4o can compute aggregate
+  answers (totals, averages, "which is highest") in-prompt at demo scale.
+- **Managed identity / Entra ID auth** — no keys stored; per-user access is
+  granted through Azure RBAC and scales to a hosted deployment without code changes.
