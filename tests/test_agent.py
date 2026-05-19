@@ -113,13 +113,18 @@ def test_ask_handles_answer_generation_failure(mock_clients):
     assert "couldn't generate" in response.answer.lower()
 
 
-def test_get_stats_parses_facets(mock_clients):
+def test_get_stats_counts_and_collects_currencies(mock_clients):
     search, openai = mock_clients
     paged = MagicMock()
     paged.get_count.return_value = 4
-    paged.get_facets.return_value = {
-        "currency": [{"value": "EUR", "count": 3}, {"value": "USD", "count": 1}]
-    }
+    # currency is filterable but not facetable in the index schema, so stats
+    # are computed by scanning retrieved docs rather than via a facet query.
+    paged.__iter__.return_value = iter([
+        {"currency": "EUR"},
+        {"currency": "USD"},
+        {"currency": "EUR"},
+        {"currency": None},
+    ])
     search.search.return_value = paged
     agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
 

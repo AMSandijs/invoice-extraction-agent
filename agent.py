@@ -139,19 +139,23 @@ class InvoiceAgent:
         return AgentResponse(answer=answer, results=docs)
 
     def get_stats(self) -> dict:
-        """Return index doc count + distinct currencies via a Search facet query.
+        """Return index doc count + distinct currencies.
 
-        Returns an empty dict if the index cannot be reached.
+        The count comes from the index total; currencies are collected by
+        scanning retrieved docs, since the `currency` field is filterable but
+        not facetable in the index schema. Returns an empty dict if the index
+        cannot be reached.
         """
         try:
             results = self.search_client.search(
                 search_text="*",
-                facets=["currency"],
-                top=0,
+                select=["currency"],
+                top=TOP_K,
                 include_total_count=True,
             )
-            facets = results.get_facets() or {}
-            currencies = [f["value"] for f in facets.get("currency", [])]
+            currencies = sorted(
+                {doc["currency"] for doc in results if doc.get("currency")}
+            )
             return {
                 "total_invoices": results.get_count(),
                 "currencies": currencies,
