@@ -7,7 +7,7 @@ A fully cloud-native application where a user uploads invoice files and gets an 
 ```
 [ Upload invoices ]
         ↓
-[ Azure AI Foundry processes them automatically ]
+[ Azure Function processes them automatically ]
         ↓
 [ Data stored + indexed ]
         ↓
@@ -16,59 +16,57 @@ A fully cloud-native application where a user uploads invoice files and gets an 
 
 ---
 
-## Current State (Phase 1 — Complete ✅)
+## Phase 1 — Local pipeline ✅ Complete
 
-A working local Python pipeline:
+A working local Python pipeline for invoice extraction.
 
 | File | What it does | Status |
 |---|---|---|
-| `extractor.py` | Extracts invoice data (Level 2 + 3) via GPT-4o | ✅ Done |
-| `store.py` | Loads CSV into local SQLite database | ✅ Done |
-| `agent.py` | Text-to-SQL conversational agent | ✅ Done |
-| `app.py` | Streamlit browser chat UI | ✅ Done |
+| `extractor.py` | Extracts invoice data via GPT-4o (text + vision paths) | ✅ Done |
+| `store.py` | Legacy: loads CSV into local SQLite. Retained for reference; not used by the RAG agent. | ✅ Done |
+| `agent.py` | RAG agent — hybrid retrieval over Azure AI Search + GPT-4o | ✅ Done |
+| `app.py` | Streamlit browser chat UI for the RAG agent | ✅ Done |
 
-**What works right now**: point the extractor at a folder of invoices, load results into SQLite, and chat with the data via a local browser UI. Supports both Azure AI Foundry and standard OpenAI as the LLM provider.
-
-**Current limitations**: everything runs locally, requires manual command-line steps, no file upload UI, database is a local SQLite file.
+**What works**: point the extractor at a folder of invoices → CSV output. Supports both Azure OpenAI and standard OpenAI as the LLM provider. Auto-detects text PDF, scanned PDF, or image inputs.
 
 ---
 
-## Phase 2 — Azure-Native Backend 🔲
+## Phase 2 — Azure-Native Backend ✅ Complete
 
 **Goal**: replace local scripts with Azure services so the pipeline runs automatically in the cloud.
 
-### Architecture
+### Architecture deployed
 
 ```
-Azure Blob Storage          ← user uploads invoices here
-        ↓  (trigger)
-Azure Function              ← runs on every new file upload
+Azure Blob Storage (invoices container)
+        ↓  blob trigger
+Azure Function  process_invoice
+        ↓  GPT-4o extraction (text + vision)
+Azure Cosmos DB        ← structured invoice records
         ↓
-Azure AI Foundry            ← GPT-4o extracts structured data
-  └─ Document Intelligence  ← optional: pre-parse PDFs before GPT-4o
+Azure AI Search        ← hybrid keyword + vector index
         ↓
-Azure Cosmos DB             ← stores structured invoice records
-        ↓
-Azure AI Search             ← indexes records for semantic + keyword search
-        ↓
-Azure OpenAI (GPT-4o)       ← powers the RAG chatbot
+RAG agent (agent.py)   ← AI Search retrieval + GPT-4o → Streamlit chat (app.py)
 ```
 
-### Key tasks
+Resource-to-resource calls use managed identity; no keys are stored.
 
-- Set up Azure Blob Storage container with upload trigger
-- Write Azure Function (`process_invoice`) that calls AI Foundry on each new file
-- Replace SQLite with Cosmos DB (NoSQL, fully managed, scales automatically)
-- Set up Azure AI Search index over the Cosmos DB data
-- Rewrite `agent.py` to use Azure AI Search for retrieval instead of Text-to-SQL
-- Deploy everything via Azure Resource Manager (ARM) template or Bicep
+### What was built
 
-### Why Azure AI Search instead of Text-to-SQL for Phase 2?
+- ✅ OpenTofu IaC for all resources (Blob Storage, Function App, Azure OpenAI, Cosmos DB, AI Search)
+- ✅ Azure Function `process_invoice` — blob-triggered, GPT-4o extraction, writes to Cosmos DB + AI Search
+- ✅ `agent.py` rewritten as a hybrid-RAG agent (keyword + VectorizedQuery, top=50, multi-turn history)
+- ✅ `app.py` updated: Search reachability check, stats from index, "Retrieved invoices" expander
+- ✅ `infra/rbac.tf` — `Search Index Data Reader` + `Cognitive Services OpenAI User` role assignments per agent user
+- ✅ Unit tests (9 tests) with mocked Azure clients, all passing
+- ✅ Auth: `DefaultAzureCredential` (AAD via `az login`); no secrets on disk
 
-Text-to-SQL works well for precise structured queries ("total for Supplier X"). Azure AI Search adds:
-- **Semantic search** — finds relevant invoices even with vague questions ("invoices from last quarter around €5k")
+### Why Azure AI Search instead of Text-to-SQL?
+
+Text-to-SQL works well for precise structured queries. Azure AI Search adds:
 - **Hybrid retrieval** — combines keyword + vector search for best results
-- **Scale** — handles millions of documents without query performance degradation
+- **Scale** — handles large document sets without schema migrations
+- **Vague queries** — finds relevant invoices even with natural-language questions
 
 ---
 
@@ -108,7 +106,7 @@ Azure App Service (FastAPI)
 
 - **CI/CD**: GitHub Actions → Azure App Service (auto-deploy on push to `main`)
 - **Monitoring**: Azure Application Insights (errors, latency, cost tracking)
-- **Cost controls**: set Azure budget alerts, cap AI Foundry token limits per user
+- **Cost controls**: set Azure budget alerts, cap OpenAI token limits per user
 - **Multi-tenancy**: isolate each organisation's invoices in separate Cosmos DB containers
 - **Audit trail**: log every extraction + every chat query for compliance
 
@@ -118,24 +116,10 @@ Azure App Service (FastAPI)
 
 | Phase | Scope | Estimated effort |
 |---|---|---|
-| Phase 1 | Local pipeline (current) | ✅ Done |
-| Phase 2 | Azure-native backend | 3–5 days |
+| Phase 1 | Local pipeline | ✅ Done |
+| Phase 2 | Azure-native backend + RAG agent | ✅ Done |
 | Phase 3 | Web application | 5–7 days |
 | Phase 4 | Production hardening | 3–5 days |
-
-Total to production-ready app from current state: **~2–3 weeks**
-
----
-
-## Can it be made into an app?
-
-Yes — and it's a natural progression from what already exists.
-
-The Streamlit UI (`app.py`) is already a browser app. Deploying it to Azure App Service takes about 30 minutes and makes it accessible to anyone with a URL. That's the fastest path to a shareable demo.
-
-For a proper product, Phase 3 describes the full React + FastAPI approach. The core intelligence (extraction via GPT-4o, RAG via Azure AI Search) stays the same — it just gets a proper frontend and API layer around it.
-
-The entire stack is Azure-native, which means it integrates naturally with enterprise Microsoft environments (Azure AD, Teams, SharePoint) if that ever becomes relevant.
 
 ---
 
@@ -143,12 +127,12 @@ The entire stack is Azure-native, which means it integrates naturally with enter
 
 | Service | Usage assumption | Monthly cost |
 |---|---|---|
-| Azure AI Foundry (GPT-4o) | 500 invoices/month + 1,000 chat queries | ~$5–15 |
+| Azure OpenAI (GPT-4o) | 500 invoices/month + 1,000 chat queries | ~$5–15 |
 | Azure Blob Storage | 10 GB storage | ~$0.20 |
 | Azure Cosmos DB | Serverless, low volume | ~$1–5 |
-| Azure AI Search | Basic tier | ~$25 |
+| Azure AI Search | Free tier (demo) / Basic tier (prod) | $0 / ~$25 |
 | Azure App Service | B1 tier | ~$13 |
 | Azure Functions | Consumption plan, low volume | ~$0–1 |
 | **Total** | | **~$45–60/month** |
 
-For a demo or assignment context, everything can run on free tiers — cost is effectively $0.
+For a demo or assignment context, everything runs on free/serverless tiers — cost is effectively $0.
