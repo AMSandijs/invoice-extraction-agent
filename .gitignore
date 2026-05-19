@@ -37,3 +37,15 @@ build/
 
 # Logs
 *.log
+
+# Terraform / OpenTofu — local state holds secrets, never commit
+infra/.terraform/
+infra/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+tfplan
+
+# Azure Functions — never commit live local settings
+local.settings.json
+function_app/local.settings.json
