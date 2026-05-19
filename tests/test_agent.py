@@ -1,8 +1,43 @@
 """Unit tests for the Phase 2 RAG agent (Azure clients mocked)."""
 
 import pytest
+from unittest.mock import MagicMock
 
-from agent import build_agent
+from agent import build_agent, InvoiceAgent, SELECT_FIELDS
+
+
+@pytest.fixture
+def mock_clients():
+    """A (search_client, openai_client) pair of MagicMocks with sane defaults."""
+    search = MagicMock()
+    openai = MagicMock()
+    openai.embeddings.create.return_value = MagicMock(
+        data=[MagicMock(embedding=[0.1, 0.2, 0.3])]
+    )
+    openai.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Test answer."))]
+    )
+    return search, openai
+
+
+def test_retrieve_builds_hybrid_query(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = [{"id": "1", "supplier_name": "Acme"}]
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    docs = agent.retrieve("total spend?")
+
+    assert docs == [{"id": "1", "supplier_name": "Acme"}]
+    openai.embeddings.create.assert_called_once_with(
+        model="emb-deploy", input="total spend?"
+    )
+    kwargs = search.search.call_args.kwargs
+    assert kwargs["search_text"] == "total spend?"
+    assert kwargs["top"] == 50
+    assert kwargs["select"] == SELECT_FIELDS
+    vector_query = kwargs["vector_queries"][0]
+    assert vector_query.fields == "content_vector"
+    assert vector_query.vector == [0.1, 0.2, 0.3]
 
 
 def test_build_agent_missing_env_raises(monkeypatch):

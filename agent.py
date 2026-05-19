@@ -79,6 +79,28 @@ class InvoiceAgent:
         self.embedding_deployment = embedding_deployment
         self._history: list[dict] = []
 
+    def _embed(self, text: str) -> list:
+        """Return the embedding vector for `text`."""
+        response = self.openai_client.embeddings.create(
+            model=self.embedding_deployment, input=text
+        )
+        return response.data[0].embedding
+
+    def retrieve(self, question: str) -> list[dict]:
+        """Hybrid keyword + vector search; returns up to TOP_K invoice docs."""
+        vector_query = VectorizedQuery(
+            vector=self._embed(question),
+            k_nearest_neighbors=TOP_K,
+            fields="content_vector",
+        )
+        results = self.search_client.search(
+            search_text=question,
+            vector_queries=[vector_query],
+            select=SELECT_FIELDS,
+            top=TOP_K,
+        )
+        return [dict(doc) for doc in results]
+
 
 def build_agent() -> InvoiceAgent:
     """Construct an InvoiceAgent from environment config, using AAD auth."""
