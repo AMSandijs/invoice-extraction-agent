@@ -1,4 +1,5 @@
 import search_indexer
+from unittest.mock import MagicMock
 
 
 def test_build_index_has_key_and_vector_field():
@@ -61,9 +62,6 @@ def test_build_search_document_maps_fields_and_floats():
     assert doc["total_amount"] == 500.0
     assert doc["subtotal"] is None
     assert doc["tax_amount"] is None  # unparseable value coerced to None
-
-
-from unittest.mock import MagicMock
 
 
 def test_ensure_index_creates_or_updates():
