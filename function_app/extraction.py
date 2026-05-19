@@ -20,6 +20,8 @@ MAX_VISION_PAGES = 4
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp"}
 
+_JSON_RESPONSE_FORMAT = {"type": "json_object"}
+
 
 def _suffix(blob_name: str) -> str:
     """Return the lowercased file extension including the dot, or ''."""
@@ -116,7 +118,7 @@ def _chat_extract_text(client, deployment: str, text: str) -> dict:
                 ),
             },
         ],
-        response_format={"type": "json_object"},
+        response_format=_JSON_RESPONSE_FORMAT,
         temperature=0,
     )
     return json.loads(response.choices[0].message.content)
@@ -124,6 +126,8 @@ def _chat_extract_text(client, deployment: str, text: str) -> dict:
 
 def _chat_extract_images(client, deployment: str, png_pages: list[bytes]) -> dict:
     """Send page images to GPT-4o Vision and parse the structured JSON reply."""
+    if not png_pages:
+        raise ValueError("No renderable pages found in PDF")
     content = [{"type": "text", "text": "Extract all invoice data from the image(s) below."}]
     for png in png_pages:
         b64 = base64.b64encode(png).decode("utf-8")
@@ -139,7 +143,7 @@ def _chat_extract_images(client, deployment: str, png_pages: list[bytes]) -> dic
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": content},
         ],
-        response_format={"type": "json_object"},
+        response_format=_JSON_RESPONSE_FORMAT,
         temperature=0,
     )
     return json.loads(response.choices[0].message.content)
@@ -155,7 +159,8 @@ def extract(client, deployment: str, blob_name: str, data: bytes) -> tuple[dict,
     if strategy == "unsupported":
         raise ValueError(f"Unsupported file type: {blob_name}")
     if strategy == "text":
-        return _chat_extract_text(client, deployment, _pdf_text(data)), "text+gpt4o"
+        text = _pdf_text(data)
+        return _chat_extract_text(client, deployment, text), "text+gpt4o"
     if strategy == "vision-pdf":
         return _chat_extract_images(client, deployment, _pdf_to_png_pages(data)), "vision+gpt4o"
     return _chat_extract_images(client, deployment, [_image_to_png(data)]), "vision+gpt4o"
