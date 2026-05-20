@@ -49,19 +49,20 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 
-def _poll_for_blob(blob_name: str) -> dict | None:
-    """Return the AI Search document for blob_name, or None if not indexed yet."""
+def _poll_for_blobs(pending: list[str]) -> dict[str, dict]:
+    """Scan AI Search once and return all docs whose blob_name is in pending."""
     if st.session_state.agent is None:
-        return None
+        return {}
     results = st.session_state.agent.search_client.search(
         search_text="*",
         select=["blob_name"] + RESULT_FIELDS,
         top=50,
     )
-    for doc in results:
-        if doc.get("blob_name") == blob_name:
-            return dict(doc)
-    return None
+    return {
+        doc["blob_name"]: dict(doc)
+        for doc in results
+        if doc.get("blob_name") in pending
+    }
 
 
 def _build_csv(records: list[dict]) -> bytes:
@@ -126,16 +127,15 @@ if st.button("Upload and process", type="primary"):
     st.caption("The Azure Function is processing each file. This usually takes 10–30 seconds.")
 
     found: dict[str, dict] = {}
-    timed_out: list[str] = []
+    timed_out: set[str] = set()
     results_placeholder = st.empty()
     start = time.time()
 
     while time.time() - start < POLL_TIMEOUT_SECONDS:
-        for blob_name in successful_uploads:
-            if blob_name not in found and blob_name not in timed_out:
-                doc = _poll_for_blob(blob_name)
-                if doc:
-                    found[blob_name] = doc
+        pending = [b for b in successful_uploads if b not in found]
+        if pending:
+            newly_found = _poll_for_blobs(pending)
+            found.update(newly_found)
 
         with results_placeholder.container():
             for blob_name in successful_uploads:
@@ -155,15 +155,12 @@ if st.button("Upload and process", type="primary"):
         if len(found) + len(timed_out) == len(successful_uploads):
             break
 
-        # Mark files that have exceeded the timeout
-        elapsed = time.time() - start
-        if elapsed > POLL_TIMEOUT_SECONDS:
-            for blob_name in successful_uploads:
-                if blob_name not in found:
-                    timed_out.append(blob_name)
-            break
-
         time.sleep(POLL_INTERVAL_SECONDS)
+
+    # Populate timed_out for any files that weren't found before the loop exited.
+    for blob_name in successful_uploads:
+        if blob_name not in found:
+            timed_out.add(blob_name)
 
     # Final render after loop
     with results_placeholder.container():
