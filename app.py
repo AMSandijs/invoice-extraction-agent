@@ -1,26 +1,23 @@
-"""Invoice Assistant — Streamlit chat UI over Azure AI Search (Phase 2 RAG).
-
-Run with:
-    streamlit run app.py
-
-Requires a .env file with the Phase 2 endpoints (see .env.sample) and an
-active `az login` session.
-"""
+"""Invoice Assistant — home screen / launcher."""
 
 import streamlit as st
 
-from agent import build_agent, InvoiceAgent
+from agent import build_agent
 
 st.set_page_config(
     page_title="Invoice Assistant",
     page_icon="🧾",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# Hide the automatic Streamlit sidebar page nav (we use st.switch_page instead).
+st.markdown(
+    '<style>[data-testid="stSidebarNav"]{display:none}</style>',
+    unsafe_allow_html=True,
+)
 
+# Pre-build the agent so session state is warm for the chat page.
 if "agent" not in st.session_state:
     try:
         st.session_state.agent = build_agent()
@@ -29,99 +26,34 @@ if "agent" not in st.session_state:
         st.session_state.agent = None
         st.session_state.agent_error = str(e)
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# --- Sidebar -------------------------------------------------------------
+# --- Home screen layout ------------------------------------------------------
 
-with st.sidebar:
-    st.title("🧾 Invoice Assistant")
-    st.caption("Ask questions about your invoice data in plain English.")
-    st.divider()
+st.markdown("<br><br>", unsafe_allow_html=True)
+col = st.columns([1, 2, 1])[1]
 
-    if st.session_state.agent_error:
-        st.error("Agent not configured")
-        st.code(st.session_state.agent_error)
-        st.info(
-            "Copy `.env.sample` to `.env`, fill in the Phase 2 endpoints "
-            "(`cd infra && tofu output`), and sign in with `az login`."
-        )
-    else:
-        agent: InvoiceAgent = st.session_state.agent
-        stats = agent.get_stats()
-        if not stats:
-            st.error("Could not reach the AI Search index.")
-            st.info("Check `SEARCH_ENDPOINT` in `.env` and that `az login` has run.")
-        else:
-            st.success("Connected to AI Search")
-            st.subheader("Index")
-            st.metric("Invoices indexed", stats.get("total_invoices", "—"))
-            currencies = ", ".join(stats.get("currencies") or [])
-            if currencies:
-                st.caption(f"Currencies: {currencies}")
+with col:
+    st.markdown("## 🧾 Invoice Assistant")
+    st.caption("Extract structured data from invoices and chat with your data.")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    st.divider()
-    st.subheader("Example questions")
-    example_questions = [
-        "What is the total amount across all invoices?",
-        "Which supplier has the highest total invoice value?",
-        "List all invoices in EUR with their amounts.",
-        "How many invoices have tax charged?",
-        "What is the average invoice amount?",
-    ]
-    for q in example_questions:
-        if st.button(q, use_container_width=True, key=f"ex_{q[:20]}"):
-            st.session_state.pending_question = q
+    # Index status line
+    if st.session_state.agent:
+        stats = st.session_state.agent.get_stats()
+        count = stats.get("total_invoices")
+        if count is not None:
+            st.caption(f"📊 {count} invoice{'s' if count != 1 else ''} indexed")
+    elif st.session_state.agent_error:
+        st.warning("Agent not configured — check your `.env` and run `az login`.")
 
-    st.divider()
-    if st.button("🗑️ Clear chat", use_container_width=True):
-        st.session_state.messages = []
-        if st.session_state.agent:
-            st.session_state.agent._history = []
-        st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-
-# --- Main chat area ------------------------------------------------------
-
-st.header("Invoice Assistant", divider="gray")
-
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and msg.get("results"):
-            with st.expander(
-                f"📋 Retrieved invoices ({len(msg['results'])})", expanded=False
-            ):
-                st.json(msg["results"])
-
-pending = st.session_state.pop("pending_question", None)
-user_input = st.chat_input("Ask about your invoices…") or pending
-
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    if st.session_state.agent is None:
-        reply = "⚠️ Agent not configured. See the sidebar for setup instructions."
-        st.session_state.messages.append({"role": "assistant", "content": reply})
-        with st.chat_message("assistant"):
-            st.markdown(reply)
-        st.stop()
-
-    with st.chat_message("assistant"):
-        with st.spinner("Searching invoices…"):
-            response = st.session_state.agent.ask(user_input)
-        st.markdown(response.answer)
-        if response.results:
-            with st.expander(
-                f"📋 Retrieved invoices ({len(response.results)})", expanded=False
-            ):
-                st.json(response.results)
-        if response.error:
-            with st.expander("⚠️ Error details", expanded=False):
-                st.code(response.error)
-
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": response.answer,
-        "results": response.results,
-    })
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        if st.button("📂 Upload Invoices", use_container_width=True, type="primary"):
+            st.switch_page("pages/1_Upload.py")
+    with btn_col2:
+        if st.button("💬 Chat with Agent", use_container_width=True):
+            st.switch_page("pages/2_Chat.py")
