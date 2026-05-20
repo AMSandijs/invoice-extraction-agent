@@ -12,6 +12,7 @@ pandas>=2.0.0           # Tabular output / CSV export
 streamlit>=1.35.0               # Browser chat UI
 azure-search-documents>=11.5.0  # Azure AI Search hybrid retrieval
 azure-identity>=1.17.0          # AAD auth (DefaultAzureCredential)
+azure-storage-blob>=12.19.0     # Direct blob upload from upload screen
 python-dotenv>=1.0.0            # Load endpoint config from .env
 
 # --- Notes ---
