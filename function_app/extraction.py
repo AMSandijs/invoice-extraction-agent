@@ -89,6 +89,8 @@ Required fields:
 
 Optional fields (include if present, otherwise use null):
   buyer_name       - Name of the customer / billed party
+  supplier_name_en - English translation or romanization of supplier_name. ALWAYS include this field: if supplier_name is already in English copy it verbatim; if it is in another language provide the English translation.
+  buyer_name_en    - English translation or romanization of buyer_name. ALWAYS include this field: same rule as supplier_name_en.
   due_date         - Payment due date (ISO 8601)
   subtotal         - Amount before tax (float)
   tax_amount       - Total tax amount (float)

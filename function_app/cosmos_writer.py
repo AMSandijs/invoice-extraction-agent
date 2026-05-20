@@ -8,7 +8,9 @@ INVOICE_FIELDS = [
     "invoice_number",
     "invoice_date",
     "supplier_name",
+    "supplier_name_en",
     "buyer_name",
+    "buyer_name_en",
     "total_amount",
     "currency",
     "subtotal",
@@ -54,3 +56,21 @@ def upsert(container, record: dict) -> None:
     """Upsert a record into the Cosmos container."""
     # Return value (upserted document with _etag/_ts) is intentionally ignored.
     container.upsert_item(record)
+
+
+def soft_delete(container, blob_name: str) -> None:
+    """Mark a record as deleted.
+
+    Sets deleted=True on the existing document so the change feed trigger
+    removes it from AI Search. Silently does nothing if the record is not found.
+    """
+    doc_id = record_id(blob_name)
+    items = list(container.query_items(
+        f"SELECT * FROM c WHERE c.id = '{doc_id}'",
+        enable_cross_partition_query=True,
+    ))
+    if not items:
+        return
+    doc = items[0]
+    doc["deleted"] = True
+    container.upsert_item(doc)

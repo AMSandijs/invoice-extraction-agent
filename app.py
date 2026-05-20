@@ -1,8 +1,13 @@
 """Invoice Assistant — home screen / launcher."""
 
+import os
+
 import streamlit as st
+from dotenv import load_dotenv
 
 from agent import build_agent
+
+load_dotenv()
 
 st.set_page_config(
     page_title="Invoice Assistant",
@@ -57,3 +62,98 @@ with col:
     with btn_col2:
         if st.button("💬 Chat with Agent", use_container_width=True):
             st.switch_page("pages/2_Chat.py")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("⚙ Admin"):
+        from sync import clear_all, export_csv, rebuild
+
+        # --- Sync ---
+        st.caption("**Sync** — rebuild the AI Search index from Cosmos DB if the count looks wrong.")
+        if st.button("🔄 Sync index from Cosmos DB", use_container_width=True):
+            progress_bar = st.progress(0.0)
+            status = st.empty()
+
+            def _update(msg: str, fraction: float) -> None:
+                status.caption(msg)
+                progress_bar.progress(fraction)
+
+            try:
+                result = rebuild(
+                    cosmos_endpoint=os.environ["COSMOS_ENDPOINT"],
+                    cosmos_database=os.environ["COSMOS_DATABASE"],
+                    cosmos_container=os.environ["COSMOS_CONTAINER"],
+                    search_endpoint=os.environ["SEARCH_ENDPOINT"],
+                    search_index=os.environ["SEARCH_INDEX"],
+                    openai_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+                    openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+                    embed_deployment=os.environ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT"],
+                    progress_callback=_update,
+                )
+                progress_bar.progress(1.0)
+                status.success(
+                    f"Sync complete — {result['indexed']} indexed"
+                    + (f", {result['errors']} error(s)" if result["errors"] else "")
+                )
+                st.session_state.pop("agent", None)
+                st.session_state.pop("admin_csv", None)
+                st.rerun()
+            except Exception as exc:
+                status.error(f"Sync failed: {exc}")
+
+        st.divider()
+
+        # --- Export CSV ---
+        # Shows a fetch button until data is ready, then replaces it with the
+        # download button — so the user always sees exactly one button.
+        st.caption("**Export** — download all stored invoices as a CSV file.")
+        if st.session_state.get("admin_csv"):
+            from datetime import date
+            st.download_button(
+                label="⬇ Export CSV",
+                data=st.session_state["admin_csv"],
+                file_name=f"invoices_{date.today().isoformat()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            if st.button("⬇ Export CSV", use_container_width=True):
+                try:
+                    with st.spinner("Reading from Cosmos DB…"):
+                        st.session_state["admin_csv"] = export_csv(
+                            cosmos_endpoint=os.environ["COSMOS_ENDPOINT"],
+                            cosmos_database=os.environ["COSMOS_DATABASE"],
+                            cosmos_container=os.environ["COSMOS_CONTAINER"],
+                        )
+                except Exception as exc:
+                    st.error(f"Export failed: {exc}")
+                st.rerun()
+
+        st.divider()
+
+        # --- Clear all ---
+        st.caption("**Clear** — permanently delete all invoices from Cosmos DB and reset the Search index.")
+        confirm = st.checkbox("I understand this will permanently delete all stored invoices")
+        if st.button("🗑 Clear all invoices", disabled=not confirm, use_container_width=True):
+            progress_bar2 = st.progress(0.0)
+            status2 = st.empty()
+
+            def _update2(msg: str, fraction: float) -> None:
+                status2.caption(msg)
+                progress_bar2.progress(fraction)
+
+            try:
+                result2 = clear_all(
+                    cosmos_endpoint=os.environ["COSMOS_ENDPOINT"],
+                    cosmos_database=os.environ["COSMOS_DATABASE"],
+                    cosmos_container=os.environ["COSMOS_CONTAINER"],
+                    search_endpoint=os.environ["SEARCH_ENDPOINT"],
+                    search_index=os.environ["SEARCH_INDEX"],
+                    progress_callback=_update2,
+                )
+                progress_bar2.progress(1.0)
+                status2.success(f"Cleared {result2['deleted']} invoice(s).")
+                st.session_state.pop("agent", None)
+                st.session_state.pop("admin_csv", None)
+                st.rerun()
+            except Exception as exc:
+                status2.error(f"Clear failed: {exc}")

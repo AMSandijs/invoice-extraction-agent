@@ -17,11 +17,12 @@ load_dotenv()
 STORAGE_ACCOUNT = os.environ.get("STORAGE_ACCOUNT_NAME", "")
 BLOB_CONTAINER = os.environ.get("BLOB_CONTAINER", "invoices")
 POLL_INTERVAL_SECONDS = 3
-POLL_TIMEOUT_SECONDS = 60
+POLL_TIMEOUT_SECONDS = 180
 
 RESULT_FIELDS = [
-    "supplier_name", "invoice_number", "invoice_date", "total_amount",
-    "currency", "buyer_name", "subtotal", "tax_amount", "due_date", "po_number",
+    "supplier_name", "supplier_name_en", "invoice_number", "invoice_date",
+    "total_amount", "currency", "buyer_name", "buyer_name_en",
+    "subtotal", "tax_amount", "due_date", "po_number",
 ]
 
 st.set_page_config(

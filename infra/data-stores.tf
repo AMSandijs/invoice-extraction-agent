@@ -41,6 +41,16 @@ resource "azurerm_cosmosdb_sql_container" "records" {
   partition_key_version = 2
 }
 
+# Change feed lease container — tracks the sync_search trigger's read position.
+resource "azurerm_cosmosdb_sql_container" "leases" {
+  name                  = "leases"
+  resource_group_name   = azurerm_resource_group.rg.name
+  account_name          = azurerm_cosmosdb_account.cosmos.name
+  database_name         = azurerm_cosmosdb_sql_database.db.name
+  partition_key_paths   = ["/id"]
+  partition_key_version = 2
+}
+
 # --- Azure AI Search: semantic + hybrid retrieval over invoices ----------
 
 resource "azurerm_search_service" "search" {

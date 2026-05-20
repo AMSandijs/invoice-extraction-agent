@@ -23,7 +23,9 @@ def build_index(index_name: str) -> SearchIndex:
     fields = [
         SimpleField(name="id", type=SearchFieldDataType.String, key=True),
         SearchableField(name="supplier_name", type=SearchFieldDataType.String, filterable=True),
+        SearchableField(name="supplier_name_en", type=SearchFieldDataType.String, filterable=True),
         SearchableField(name="buyer_name", type=SearchFieldDataType.String, filterable=True),
+        SearchableField(name="buyer_name_en", type=SearchFieldDataType.String, filterable=True),
         SearchableField(name="invoice_number", type=SearchFieldDataType.String, filterable=True),
         SearchableField(name="po_number", type=SearchFieldDataType.String, filterable=True),
         SimpleField(name="currency", type=SearchFieldDataType.String, filterable=True),
@@ -93,7 +95,9 @@ def build_search_document(record: dict, content: str, vector: list) -> dict:
     doc = {
         "id": record["id"],
         "supplier_name": record.get("supplier_name"),
+        "supplier_name_en": record.get("supplier_name_en"),
         "buyer_name": record.get("buyer_name"),
+        "buyer_name_en": record.get("buyer_name_en"),
         "invoice_number": record.get("invoice_number"),
         "po_number": record.get("po_number"),
         "currency": record.get("currency"),

@@ -58,3 +58,29 @@ resource "azurerm_role_assignment" "agent_openai_user" {
   role_definition_name = "Cognitive Services OpenAI User"
   principal_id         = each.value
 }
+
+resource "azurerm_role_assignment" "agent_storage_blob" {
+  for_each             = toset(var.agent_user_object_ids)
+  scope                = azurerm_storage_account.sa.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = each.value
+}
+
+# Search write access — needed to delete/rebuild the index via the admin script.
+resource "azurerm_role_assignment" "agent_search_write" {
+  for_each             = toset(var.agent_user_object_ids)
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Index Data Contributor"
+  principal_id         = each.value
+}
+
+# Cosmos DB data access — read + write needed for rebuild/clear/export.
+resource "azurerm_cosmosdb_sql_role_assignment" "agent_cosmos_data" {
+  for_each            = toset(var.agent_user_object_ids)
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+  # Built-in "Cosmos DB Built-in Data Contributor" role.
+  role_definition_id  = "${azurerm_cosmosdb_account.cosmos.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  principal_id        = each.value
+  scope               = azurerm_cosmosdb_account.cosmos.id
+}

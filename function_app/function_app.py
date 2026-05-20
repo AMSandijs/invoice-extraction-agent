@@ -99,6 +99,35 @@ def process_blob(blob_name, data, config, openai_client, cosmos_container,
     return record
 
 
+@app.cosmos_db_trigger(
+    arg_name="documents",
+    database_name="%COSMOS_DATABASE%",
+    container_name="%COSMOS_CONTAINER%",
+    connection="COSMOS_CHANGE_FEED",
+    lease_database_name="%COSMOS_DATABASE%",
+    lease_container_name="leases",
+    create_lease_container_if_not_exists=True,
+)
+def sync_search(documents: func.DocumentList) -> None:
+    """Change feed trigger: removes soft-deleted records from AI Search.
+
+    process_invoice already pushes to Search on creation, so this function
+    only handles soft-deletes (deleted=True) to avoid double embedding calls.
+    """
+    config = load_config()
+    _, _, search_client, _ = build_clients(config)
+
+    to_delete = [
+        {"id": dict(doc)["id"]}
+        for doc in documents
+        if dict(doc).get("deleted") and dict(doc).get("id")
+    ]
+
+    if to_delete:
+        search_client.delete_documents(documents=to_delete)
+        logging.info("Removed %d soft-deleted doc(s) from Search", len(to_delete))
+
+
 @app.blob_trigger(arg_name="blob", path="invoices/{name}", connection="AzureWebJobsStorage")
 def process_invoice(blob: func.InputStream):
     """Blob trigger entrypoint for the `invoices/` container."""

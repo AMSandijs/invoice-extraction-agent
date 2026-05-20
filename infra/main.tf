@@ -103,6 +103,8 @@ resource "azurerm_linux_function_app" "func" {
     COSMOS_ENDPOINT                   = azurerm_cosmosdb_account.cosmos.endpoint
     COSMOS_DATABASE                   = azurerm_cosmosdb_sql_database.db.name
     COSMOS_CONTAINER                  = azurerm_cosmosdb_sql_container.records.name
+    # Identity-based connection for the Cosmos DB change feed trigger.
+    COSMOS_CHANGE_FEED__accountEndpoint = azurerm_cosmosdb_account.cosmos.endpoint
     SEARCH_ENDPOINT                   = "https://${azurerm_search_service.search.name}.search.windows.net"
     SEARCH_INDEX                      = "invoices-idx"
   }
