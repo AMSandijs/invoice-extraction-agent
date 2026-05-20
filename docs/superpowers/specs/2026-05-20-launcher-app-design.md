@@ -73,9 +73,14 @@ After upload, a results table is shown with one row per file:
 
 The page polls AI Search every 3 seconds (by matching `blob_name`), updating each row when its record appears. Polling stops when all files are found or after 60 seconds (timeout row shown as "⚠ Timed out — may still be processing").
 
-**Step 4 — Navigate to chat**
+**Step 4 — Download CSV and navigate to chat**
 
-Once at least one file is confirmed indexed, a `💬 Chat now →` button appears at the bottom. It calls `st.switch_page("pages/2_Chat.py")`.
+Once at least one file is confirmed indexed:
+
+- A `⬇ Download CSV` button appears, rendered with `st.download_button`. It exports all successfully extracted rows (supplier name, invoice number, date, total, currency, buyer name, subtotal, tax amount, due date, PO number) as a UTF-8 CSV file named `invoices_<YYYY-MM-DD>.csv`. Rows for files that timed out or errored are excluded.
+- A `💬 Chat now →` button calls `st.switch_page("pages/2_Chat.py")`.
+
+Both buttons appear side by side. The CSV is built in-memory from the polled AI Search results — no extra API call needed.
 
 A `← Back` link in the top-left returns to the home screen.
 
