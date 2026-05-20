@@ -155,21 +155,29 @@ func azure functionapp publish <function_app_name>   # name from `tofu output`
 Uploading an invoice to the `invoices` blob container then triggers extraction
 end-to-end into Cosmos DB and the AI Search index.
 
-### Run the RAG agent
-
-The agent authenticates to Azure with your `az login` session (Entra ID) — no
-secrets on disk. Your user needs the `Search Index Data Reader` and
-`Cognitive Services OpenAI User` roles (managed in `infra/rbac.tf`).
+### Run the app
 
 ```bash
-cp .env.sample .env          # then fill in endpoints from `cd infra && tofu output`
+cp .env.sample .env          # fill in endpoints from `cd infra && tofu output`
 az login
 pip install -r requirements.txt
+```
+
+**Option A — double-click launcher (macOS)**
+
+Right-click `launch.command` → Open (first time only, to clear Gatekeeper). After that, double-click it any time — the browser opens automatically.
+
+**Option B — terminal**
+
+```bash
 streamlit run app.py
 ```
 
-Open http://localhost:8501 and ask questions like *"What is the total amount for
-invoices from Supplier X?"* or *"Which supplier has the highest total?"*
+Open http://localhost:8501.
+
+The app has two modes:
+- **Upload Invoices** — select PDFs, upload to Azure, see extracted data, download a CSV
+- **Chat with Agent** — ask questions in plain English about indexed invoices
 
 ### Tests
 

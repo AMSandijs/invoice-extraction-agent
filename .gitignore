@@ -50,3 +50,4 @@ tfplan
 # Azure Functions — never commit live local settings
 local.settings.json
 function_app/local.settings.json
+.superpowers/
