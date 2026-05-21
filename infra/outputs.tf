@@ -50,3 +50,23 @@ output "search_index" {
   description = "Index name the Function/agent should create and query."
   value       = "invoices-idx"
 }
+
+output "app_url" {
+  description = "Public HTTPS URL for the hosted Streamlit Invoice Assistant."
+  value       = "https://${azurerm_container_app.app.ingress[0].fqdn}"
+}
+
+output "acr_name" {
+  description = "Container registry name — used by deploy.sh for az acr build."
+  value       = azurerm_container_registry.acr.name
+}
+
+output "acr_login_server" {
+  description = "Full registry hostname — used to tag and reference images."
+  value       = azurerm_container_registry.acr.login_server
+}
+
+output "container_app_name" {
+  description = "Container App name — used by deploy.sh for az containerapp update."
+  value       = azurerm_container_app.app.name
+}

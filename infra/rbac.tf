@@ -84,3 +84,49 @@ resource "azurerm_cosmosdb_sql_role_assignment" "agent_cosmos_data" {
   principal_id        = each.value
   scope               = azurerm_cosmosdb_account.cosmos.id
 }
+
+# --- Container App managed identity: data-plane access -------------------
+# The hosted Streamlit app uses its system-assigned identity to reach all
+# backend services — no secrets are stored.
+
+locals {
+  app_principal_id = azurerm_container_app.app.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "app_acr_pull" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = local.app_principal_id
+}
+
+resource "azurerm_role_assignment" "app_storage_blob" {
+  scope                = azurerm_storage_account.sa.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = local.app_principal_id
+}
+
+resource "azurerm_role_assignment" "app_openai" {
+  scope                = azurerm_cognitive_account.openai.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = local.app_principal_id
+}
+
+resource "azurerm_role_assignment" "app_search_data" {
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Index Data Contributor"
+  principal_id         = local.app_principal_id
+}
+
+resource "azurerm_role_assignment" "app_search_service" {
+  scope                = azurerm_search_service.search.id
+  role_definition_name = "Search Service Contributor"
+  principal_id         = local.app_principal_id
+}
+
+resource "azurerm_cosmosdb_sql_role_assignment" "app_cosmos" {
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+  role_definition_id  = "${azurerm_cosmosdb_account.cosmos.id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  principal_id        = local.app_principal_id
+  scope               = azurerm_cosmosdb_account.cosmos.id
+}

@@ -1,0 +1,33 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets / local config
+.env
+.env.*
+
+# Terraform state and local tooling
+infra/
+.azure/
+.claude/
+
+# Files not needed in the container
+tests/
+docs/
+scripts/
+extractor.py
+store.py
+conftest.py
+launch.command
+setup_repo.sh
+*.docx
+
+# Function App — only search_indexer.py is needed (copied explicitly)
+function_app/function_app.py
+function_app/extraction.py
+function_app/cosmos_writer.py
+function_app/requirements.txt
+function_app/host.json
+function_app/tests/
+function_app/__pycache__/
