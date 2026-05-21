@@ -82,7 +82,7 @@ Extract the following fields from the invoice and return ONLY a valid JSON objec
 
 Required fields:
   invoice_number   - The invoice identifier/reference number (string)
-  invoice_date     - Date the invoice was issued (ISO 8601 if possible, e.g. "2024-03-15")
+  invoice_date     - Date this document was created or issued (ISO 8601 if possible, e.g. "2024-03-15"). For remittance advices or payment documents use the check/payment date, not the date of the underlying invoices being referenced.
   supplier_name    - Name of the company or person issuing the invoice (string)
   supplier_name_en - English translation or romanization of supplier_name. If already in English, copy it verbatim. Never null.
   buyer_name_en    - English translation or romanization of buyer_name. If already in English, copy it verbatim. If no buyer, use null.
