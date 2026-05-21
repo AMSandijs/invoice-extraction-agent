@@ -84,13 +84,13 @@ Required fields:
   invoice_number   - The invoice identifier/reference number (string)
   invoice_date     - Date the invoice was issued (ISO 8601 if possible, e.g. "2024-03-15")
   supplier_name    - Name of the company or person issuing the invoice (string)
+  supplier_name_en - English translation or romanization of supplier_name. If already in English, copy it verbatim. Never null.
+  buyer_name_en    - English translation or romanization of buyer_name. If already in English, copy it verbatim. If no buyer, use null.
   total_amount     - Final total payable amount as a number (float, no currency symbol)
-  currency         - 3-letter ISO currency code if determinable (e.g. "EUR", "USD"), else the symbol
+  currency         - 3-letter ISO currency code. Infer from explicit symbols/codes first (e.g. "€"→"EUR", "£"→"GBP", "¥"→"CNY"). If no explicit currency, infer from context (language, country, company name). For English-language invoices with no other indication, default to "USD". Never null.
 
 Optional fields (include if present, otherwise use null):
   buyer_name       - Name of the customer / billed party
-  supplier_name_en - English translation or romanization of supplier_name. ALWAYS include this field: if supplier_name is already in English copy it verbatim; if it is in another language provide the English translation.
-  buyer_name_en    - English translation or romanization of buyer_name. ALWAYS include this field: same rule as supplier_name_en.
   due_date         - Payment due date (ISO 8601)
   subtotal         - Amount before tax (float)
   tax_amount       - Total tax amount (float)

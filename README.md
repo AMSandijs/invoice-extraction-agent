@@ -2,7 +2,9 @@
 
 Extract structured data from invoice documents and chat with your invoice data in plain English.
 
-Built for a home assignment. Covers both the mandatory extraction pipeline and the optional conversational RAG agent backed by Azure.
+**Live demo:** [https://ca-invoice-rag.yellowriver-3ff2a4c5.swedencentral.azurecontainerapps.io](https://ca-invoice-rag.yellowriver-3ff2a4c5.swedencentral.azurecontainerapps.io)
+
+> First visit may take ~20 seconds to wake up (scale-to-zero).
 
 ---
 
@@ -99,7 +101,6 @@ invoice-agent/
 ├── uploader.py             Upload a file to Azure Blob Storage
 ├── sync.py                 Admin ops — rebuild index, clear all, export CSV
 ├── extractor.py            Local extraction pipeline (Part 1)
-├── store.py                Legacy CSV → SQLite loader (Phase 1 reference)
 ├── function_app/
 │   ├── function_app.py     Azure Function entry points (blob trigger + change feed)
 │   ├── extraction.py       GPT-4o extraction logic (text + vision)
@@ -107,10 +108,12 @@ invoice-agent/
 │   ├── search_indexer.py   AI Search index management + document push
 │   └── requirements.txt    Function App dependencies (deployed with the function)
 ├── infra/                  OpenTofu — all Azure resources
+├── docs/adr/               Architecture Decision Records
 ├── scripts/
 │   └── rebuild_search_index.py   CLI wrapper for sync.rebuild()
 ├── tests/                  Unit tests — RAG agent
-├── launch.command          macOS double-click launcher
+├── Dockerfile              Container image for the Streamlit app
+├── deploy.sh               One-command deploy to Azure Container Apps
 ├── requirements.txt        App dependencies
 ├── requirements-dev.txt    + pytest
 └── .env.sample             Copy to .env and fill in endpoints
@@ -170,7 +173,7 @@ python extractor.py ./invoices --output results.csv   # custom output name
 | `buyer_name` | Billed party |
 | `buyer_name_en` | English translation or romanisation of buyer name |
 | `total_amount` | Final payable amount (float) |
-| `currency` | ISO 3-letter code or symbol |
+| `currency` | ISO 3-letter code (inferred from context if not explicit) |
 | `subtotal` | Amount before tax |
 | `tax_amount` | Tax total |
 | `tax_rate` | Tax percentage |
@@ -186,6 +189,17 @@ python extractor.py ./invoices --output results.csv   # custom output name
 
 Invoices uploaded through the web UI are processed automatically and become queryable through a chat agent.
 
+### One-command deploy
+
+```bash
+az login
+cd infra && tofu init   # first time only
+cd ..
+./deploy.sh
+```
+
+`deploy.sh` provisions all Azure infrastructure, builds the Docker image in ACR, and deploys it to Container Apps. Takes ~5 minutes total.
+
 ### Prerequisites
 
 - [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) — `az login`
@@ -198,25 +212,45 @@ Invoices uploaded through the web UI are processed automatically and become quer
 ```bash
 cd infra
 tofu init
-tofu plan
 tofu apply
 ```
 
-This creates: Resource Group, Storage Account, Azure OpenAI (GPT-4o + embeddings), Cosmos DB, AI Search, and a Function App. All resource-to-resource calls use managed identity — no keys are stored.
+This creates: Resource Group, Storage Account, Azure OpenAI (GPT-4o + embeddings), Cosmos DB, AI Search, Function App, Container Registry, and Container Apps. All resource-to-resource calls use managed identity — no keys stored anywhere.
 
-Note the outputs when done:
+### Step 2 — Deploy the Azure Function
 
 ```bash
-tofu output
+cd function_app
+func azure functionapp publish <function_app_name> --python
 ```
 
-### Step 2 — Configure the app
+Replace `<function_app_name>` with the name from `tofu output`.
+
+### Step 3 — Deploy the Streamlit app
+
+```bash
+./deploy.sh
+```
+
+Or manually:
+
+```bash
+ACR=$(tofu -chdir=infra output -raw acr_name)
+CA=$(tofu -chdir=infra output -raw container_app_name)
+RG=$(tofu -chdir=infra output -raw resource_group)
+ACR_SERVER=$(tofu -chdir=infra output -raw acr_login_server)
+
+az acr build --registry $ACR --image invoice-agent:latest --file Dockerfile .
+az containerapp registry set --name $CA --resource-group $RG --server $ACR_SERVER --identity system
+az containerapp update --name $CA --resource-group $RG --image ${ACR_SERVER}/invoice-agent:latest --min-replicas 1
+```
+
+### Run locally
 
 ```bash
 cp .env.sample .env
+# Fill in values from: tofu -chdir=infra output
 ```
-
-Fill in `.env` with values from `tofu output`:
 
 ```env
 AZURE_OPENAI_ENDPOINT=https://...
@@ -228,38 +262,17 @@ COSMOS_ENDPOINT=https://...
 COSMOS_DATABASE=invoices
 COSMOS_CONTAINER=records
 SEARCH_ENDPOINT=https://...
-SEARCH_INDEX=invoices
+SEARCH_INDEX=invoices-idx
 ```
 
-### Step 3 — Deploy the Azure Function
-
 ```bash
-cd function_app
-func azure functionapp publish <function_app_name>
-```
-
-Replace `<function_app_name>` with the name from `tofu output`.
-
-### Step 4 — Install Python dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Step 5 — Run the app
-
-**macOS — double-click launcher**
-
-Right-click `launch.command` → Open (first time only, to clear Gatekeeper). Double-click it anytime after that — Streamlit starts and the browser opens automatically.
-
-**Terminal**
-
-```bash
-az login          # authenticate with Azure
+az login
 streamlit run app.py
 ```
 
 Open [http://localhost:8501](http://localhost:8501).
+
+**macOS launcher** — right-click `launch.command` → Open (first time), then double-click to start.
 
 ### App screens
 
