@@ -1,19 +1,10 @@
 # Invoice Data Extraction & RAG Agent
 
-Extract structured data from invoice documents and chat with your invoice data in plain English.
+Upload invoice documents and chat with your data in plain English. GPT-4o extracts structured fields from any invoice format (text PDF, scanned PDF, image); a hybrid search index makes every field queryable by natural language.
 
 **Live demo:** [https://ca-invoice-rag.yellowriver-3ff2a4c5.swedencentral.azurecontainerapps.io](https://ca-invoice-rag.yellowriver-3ff2a4c5.swedencentral.azurecontainerapps.io)
 
 > First visit may take ~20 seconds to wake up (scale-to-zero).
-
----
-
-## What it does
-
-| Mode | How it works |
-|---|---|
-| **Local extraction (Part 1)** | Point `extractor.py` at a folder of invoices → get a CSV. No cloud needed. |
-| **Azure RAG agent (Part 2)** | Upload invoices through a web UI → Azure processes them → chat with your data. |
 
 ---
 
@@ -70,7 +61,6 @@ streamlit                browser UI
 pdfplumber               text extraction from text-based PDFs
 PyMuPDF (fitz)           rendering scanned PDFs to images
 Pillow                   image normalisation
-pandas                   CSV export (local pipeline)
 python-dotenv            load .env config
 
 # Azure SDK
@@ -78,13 +68,6 @@ azure-identity           DefaultAzureCredential / AAD auth
 azure-storage-blob       direct blob upload from the UI
 azure-cosmos             Cosmos DB client (sync + rebuild)
 azure-search-documents   hybrid search + index management
-```
-
-System dependency for the local pipeline's scanned-PDF path:
-
-```bash
-brew install poppler          # macOS
-sudo apt-get install poppler-utils   # Ubuntu / Debian
 ```
 
 ---
@@ -100,7 +83,7 @@ invoice-agent/
 ├── agent.py                RAG agent — AI Search retrieval + GPT-4o
 ├── uploader.py             Upload a file to Azure Blob Storage
 ├── sync.py                 Admin ops — rebuild index, clear all, export CSV
-├── extractor.py            Local extraction pipeline (Part 1)
+├── extractor.py            Standalone local extraction pipeline (no cloud needed)
 ├── function_app/
 │   ├── function_app.py     Azure Function entry points (blob trigger + change feed)
 │   ├── extraction.py       GPT-4o extraction logic (text + vision)
@@ -121,75 +104,20 @@ invoice-agent/
 
 ---
 
-## Part 1 — Local extraction
+## Setup
 
-`extractor.py` processes a folder of invoices with GPT-4o and writes a CSV. No Azure infrastructure required — just an OpenAI API key.
+### Prerequisites
 
-### How it picks an extraction strategy
-
-| File | Detection | Strategy |
+| Tool | macOS | Windows |
 |---|---|---|
-| Text PDF | ≥ 200 extractable chars | pdfplumber → GPT-4o text prompt |
-| Scanned PDF | < 200 extractable chars | PyMuPDF renders pages → GPT-4o Vision |
-| Image (PNG / JPG / …) | file extension | GPT-4o Vision directly |
-
-### Setup
-
-```bash
-# 1. System dependency (only for scanned PDFs)
-brew install poppler          # macOS
-sudo apt-get install poppler-utils   # Ubuntu
-
-# 2. Python dependencies
-pip install -r requirements.txt
-
-# 3. Set your API provider — one of:
-export OPENAI_API_KEY=sk-...
-
-# OR Azure OpenAI
-export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-export AZURE_OPENAI_API_KEY=your-azure-key
-export AZURE_OPENAI_DEPLOYMENT=gpt-4o
-export AZURE_OPENAI_API_VERSION=2024-12-01-preview
-```
-
-### Run
-
-```bash
-python extractor.py ./invoices
-python extractor.py ./invoices --output results.csv   # custom output name
-```
-
-### Output CSV columns
-
-| Column | Description |
-|---|---|
-| `file` | Source filename |
-| `method` | Extraction strategy (`text+gpt4o` or `vision+gpt4o`) |
-| `invoice_number` | Invoice reference number |
-| `invoice_date` | Date issued (ISO 8601 where possible) |
-| `supplier_name` | Issuing company / person |
-| `supplier_name_en` | English translation or romanisation of supplier name |
-| `buyer_name` | Billed party |
-| `buyer_name_en` | English translation or romanisation of buyer name |
-| `total_amount` | Final payable amount (float) |
-| `currency` | ISO 3-letter code (inferred from context if not explicit) |
-| `subtotal` | Amount before tax |
-| `tax_amount` | Tax total |
-| `tax_rate` | Tax percentage |
-| `due_date` | Payment due date |
-| `po_number` | Purchase order number |
-| `payment_terms` | e.g. "Net 30" |
-| `line_items` | JSON array of line items |
-| `error` | Error message if extraction failed |
+| [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) | `brew install azure-cli` | `winget install Microsoft.AzureCLI` |
+| [OpenTofu](https://opentofu.org/docs/intro/install/) | `brew install opentofu` | `winget install OpenTofu.OpenTofu` |
+| [Azure Functions Core Tools](https://docs.microsoft.com/azure/azure-functions/functions-run-local) | `brew tap azure/functions && brew install azure-functions-core-tools@4` | `winget install Microsoft.AzureFunctionsCoreTools` |
+| [Python 3.10+](https://www.python.org/downloads/) | `brew install python` | `winget install Python.Python.3.11` |
 
 ---
 
-## Part 2 — Azure backend + RAG agent
-
-Invoices uploaded through the web UI are processed automatically and become queryable through a chat agent.
-
-### One-command deploy
+### Deploy to Azure (one command)
 
 ```bash
 az login
@@ -198,59 +126,42 @@ cd ..
 ./deploy.sh
 ```
 
-`deploy.sh` provisions all Azure infrastructure, builds the Docker image in ACR, and deploys it to Container Apps. Takes ~5 minutes total.
+> **Windows:** run in Git Bash or WSL. `deploy.sh` uses bash.
 
-### Prerequisites
+`deploy.sh` provisions all Azure infrastructure, builds the Docker image in ACR, and deploys to Container Apps. Takes ~5 minutes total.
 
-- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) — `az login`
-- [OpenTofu](https://opentofu.org/docs/intro/install/) — infrastructure provisioning
-- [Azure Functions Core Tools](https://docs.microsoft.com/azure/azure-functions/functions-run-local) — `func`
-- Python 3.10+
+#### What gets created
 
-### Step 1 — Provision Azure infrastructure
+Resource Group, Storage Account, Azure OpenAI (GPT-4o + embeddings), Cosmos DB, AI Search, Function App, Container Registry, Container Apps. All resource-to-resource calls use managed identity — no keys stored anywhere.
 
-```bash
-cd infra
-tofu init
-tofu apply
-```
+---
 
-This creates: Resource Group, Storage Account, Azure OpenAI (GPT-4o + embeddings), Cosmos DB, AI Search, Function App, Container Registry, and Container Apps. All resource-to-resource calls use managed identity — no keys stored anywhere.
-
-### Step 2 — Deploy the Azure Function
+### Deploy the Azure Function
 
 ```bash
 cd function_app
 func azure functionapp publish <function_app_name> --python
 ```
 
-Replace `<function_app_name>` with the name from `tofu output`.
+Replace `<function_app_name>` with the value from `tofu output function_app_name`.
 
-### Step 3 — Deploy the Streamlit app
-
-```bash
-./deploy.sh
-```
-
-Or manually:
-
-```bash
-ACR=$(tofu -chdir=infra output -raw acr_name)
-CA=$(tofu -chdir=infra output -raw container_app_name)
-RG=$(tofu -chdir=infra output -raw resource_group)
-ACR_SERVER=$(tofu -chdir=infra output -raw acr_login_server)
-
-az acr build --registry $ACR --image invoice-agent:latest --file Dockerfile .
-az containerapp registry set --name $CA --resource-group $RG --server $ACR_SERVER --identity system
-az containerapp update --name $CA --resource-group $RG --image ${ACR_SERVER}/invoice-agent:latest --min-replicas 1
-```
+---
 
 ### Run locally
 
+**1. Configure environment**
+
+macOS / Linux:
 ```bash
 cp .env.sample .env
-# Fill in values from: tofu -chdir=infra output
 ```
+
+Windows (Command Prompt):
+```cmd
+copy .env.sample .env
+```
+
+Fill in `.env` with values from `tofu -chdir=infra output`:
 
 ```env
 AZURE_OPENAI_ENDPOINT=https://...
@@ -265,6 +176,14 @@ SEARCH_ENDPOINT=https://...
 SEARCH_INDEX=invoices-idx
 ```
 
+**2. Install dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+**3. Authenticate and run**
+
 ```bash
 az login
 streamlit run app.py
@@ -272,7 +191,9 @@ streamlit run app.py
 
 Open [http://localhost:8501](http://localhost:8501).
 
-**macOS launcher** — right-click `launch.command` → Open (first time), then double-click to start.
+**macOS launcher** — right-click `launch.command` → Open (first time only), then double-click to start.
+
+---
 
 ### App screens
 
@@ -281,6 +202,8 @@ Open [http://localhost:8501](http://localhost:8501).
 | **Home** | Launch pad + invoice count + admin panel (sync, export CSV, clear all) |
 | **Upload Invoices** | Select PDFs or images, upload to Azure, watch extraction results live, download CSV |
 | **Chat with Agent** | Ask questions about indexed invoices in plain English |
+
+---
 
 ### Tests
 
