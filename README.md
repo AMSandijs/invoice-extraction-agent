@@ -104,6 +104,46 @@ invoice-agent/
 
 ---
 
+## Using the app
+
+### Home screen
+
+The home screen shows how many invoices are currently indexed and gives you two entry points.
+
+- **Upload Invoices** — go to the upload screen to add new invoices
+- **Chat with Agent** — go to the chat screen to ask questions about indexed invoices
+- **⚙ Admin** (expandable panel at the bottom):
+  - **Sync index from Cosmos DB** — if the invoice count looks wrong, use this to rebuild the AI Search index from the source of truth in Cosmos DB
+  - **Export CSV** — download all stored invoices as a CSV file with all extracted fields
+  - **Clear all invoices** — permanently deletes everything from Cosmos DB and resets the Search index (requires a confirmation checkbox)
+
+### Upload screen
+
+1. Click **Browse files** and select one or more invoice files (PDF, PNG, JPG)
+2. Click **Upload and process**
+3. Each file uploads to Azure Blob Storage, which triggers the Azure Function to extract structured data using GPT-4o
+4. The screen polls every few seconds and shows a live status for each file — a green tick when extraction is complete, with the supplier name, invoice number, and total
+5. Once all files are processed, you can **Download CSV** with the extracted data or go straight to **Chat now →**
+
+Uploading the same file again re-extracts it and overwrites the existing record — no duplicates are created.
+
+### Chat screen
+
+Type any question about your invoices in the message box and press Enter or click **Send**.
+
+Example questions:
+- *"What invoices do I have?"*
+- *"What is the total amount across all invoices?"*
+- *"Which supplier has the highest invoice?"*
+- *"Show me all invoices in USD"*
+- *"What is the tax amount on the Glass Act invoice?"*
+
+The agent retrieves the most relevant invoice records from AI Search and passes them to GPT-4o to generate an answer. It keeps track of the last few turns so follow-up questions work naturally.
+
+**Clear conversation** — resets the chat history without affecting the indexed invoices.
+
+---
+
 ## Setup
 
 ### Prerequisites
