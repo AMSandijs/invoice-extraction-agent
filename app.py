@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 
 from agent import build_agent
 
+try:
+    from analytics import track
+except ImportError:
+    def track(event, props=None): pass
+
 load_dotenv()
 
 st.set_page_config(
@@ -21,6 +26,10 @@ st.markdown(
     '<style>[data-testid="stSidebarNav"]{display:none}</style>',
     unsafe_allow_html=True,
 )
+
+if "tracked_home" not in st.session_state:
+    track("page_view", {"page": "home"})
+    st.session_state.tracked_home = True
 
 # Pre-build the agent so session state is warm for the chat page.
 if "agent" not in st.session_state:

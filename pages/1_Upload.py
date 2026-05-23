@@ -12,6 +12,11 @@ from dotenv import load_dotenv
 from agent import build_agent
 from uploader import upload_blob
 
+try:
+    from analytics import track
+except ImportError:
+    def track(event, props=None): pass
+
 load_dotenv()
 
 STORAGE_ACCOUNT = os.environ.get("STORAGE_ACCOUNT_NAME", "")
@@ -78,6 +83,10 @@ def _build_csv(records: list[dict]) -> bytes:
 
 # --- Page layout -------------------------------------------------------------
 
+if "tracked_upload" not in st.session_state:
+    track("page_view", {"page": "upload"})
+    st.session_state.tracked_upload = True
+
 if st.button("← Home"):
     st.switch_page("app.py")
 
@@ -115,6 +124,8 @@ if st.button("Upload and process", type="primary"):
         upload_progress.progress((i + 1) / len(uploaded_files))
 
     successful_uploads = [f.name for f in uploaded_files if f.name not in upload_errors]
+    if successful_uploads:
+        track("invoices_uploaded", {"count": len(successful_uploads), "files": ", ".join(successful_uploads)})
 
     if upload_errors:
         for name, err in upload_errors.items():

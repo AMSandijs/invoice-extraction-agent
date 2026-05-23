@@ -52,3 +52,4 @@ local.settings.json
 function_app/local.settings.json
 .superpowers/
 .azure/
+analytics.py
