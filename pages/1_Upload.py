@@ -1,8 +1,11 @@
 """Invoice Assistant — upload screen."""
 
 import csv
+import hashlib
 import io
 import os
+import sys
+import tempfile
 import time
 from datetime import date
 
@@ -23,6 +26,7 @@ STORAGE_ACCOUNT = os.environ.get("STORAGE_ACCOUNT_NAME", "")
 BLOB_CONTAINER = os.environ.get("BLOB_CONTAINER", "invoices")
 POLL_INTERVAL_SECONDS = 3
 POLL_TIMEOUT_SECONDS = 180
+IS_LOCAL_MODE = not STORAGE_ACCOUNT
 
 RESULT_FIELDS = [
     "supplier_name", "supplier_name_en", "invoice_number", "invoice_date",
@@ -42,7 +46,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Ensure agent is available in session state for the chat page to reuse.
 if "agent" not in st.session_state:
     try:
         st.session_state.agent = build_agent()
@@ -81,37 +84,84 @@ def _build_csv(records: list[dict]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
-# --- Page layout -------------------------------------------------------------
+def _run_local_extraction(uploaded_files) -> None:
+    """Extract invoices inline — no blob upload, no polling."""
+    if st.session_state.agent is None:
+        st.error("Agent not configured. Check your .env.")
+        return
 
-if "tracked_upload" not in st.session_state:
-    track("page_view", {"page": "upload"})
-    st.session_state.tracked_upload = True
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from extractor import get_client, process_file as _extract_file
 
-if st.button("← Home"):
-    st.switch_page("app.py")
+    st.subheader("Extracting…")
+    client, model = get_client()
+    progress = st.progress(0)
+    results = []
 
-st.header("Upload Invoices", divider="gray")
-st.caption("Select one or more invoice files. Use Cmd+click (Mac) or Ctrl+click (Windows) to select multiple.")
+    for i, f in enumerate(uploaded_files):
+        suffix = os.path.splitext(f.name)[1]
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(f.read())
+            tmp_path = tmp.name
 
-if not STORAGE_ACCOUNT:
-    st.error(
-        "STORAGE_ACCOUNT_NAME is not set in your `.env`. "
-        "Add it and restart the app."
-    )
-    st.stop()
+        try:
+            with st.spinner(f"Extracting {f.name}…"):
+                record = _extract_file(client, tmp_path, model)
+        finally:
+            os.unlink(tmp_path)
 
-uploaded_files = st.file_uploader(
-    "Invoice files",
-    type=["pdf", "png", "jpg", "jpeg"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
+        if record.get("error"):
+            st.error(f"❌ {f.name}: {record['error']}")
+            progress.progress((i + 1) / len(uploaded_files))
+            continue
 
-if not uploaded_files:
-    st.stop()
+        blob_name = f.name
+        doc_id = hashlib.sha256(blob_name.encode()).hexdigest()[:32]
+        index_record = {
+            "id": doc_id,
+            "blob_name": blob_name,
+            "supplier_name": record.get("supplier_name"),
+            "supplier_name_en": record.get("supplier_name"),
+            "invoice_number": record.get("invoice_number"),
+            "invoice_date": record.get("invoice_date"),
+            "total_amount": record.get("total_amount"),
+            "currency": record.get("currency"),
+            "buyer_name": record.get("buyer_name"),
+            "buyer_name_en": record.get("buyer_name"),
+            "subtotal": record.get("subtotal"),
+            "tax_amount": record.get("tax_amount"),
+            "due_date": record.get("due_date"),
+            "po_number": record.get("po_number"),
+        }
+        st.session_state.agent.index_invoice(index_record)
 
-if st.button("Upload and process", type="primary"):
-    # --- Upload phase --------------------------------------------------------
+        supplier = index_record.get("supplier_name") or "—"
+        inv_num = index_record.get("invoice_number") or "—"
+        total = index_record.get("total_amount")
+        currency = index_record.get("currency") or ""
+        amount_str = f"{total:,.2f} {currency}".strip() if total else "—"
+        st.success(f"✓ **{blob_name}** — {supplier} · {inv_num} · {amount_str}")
+        results.append(index_record)
+        progress.progress((i + 1) / len(uploaded_files))
+
+    if results:
+        track("invoices_uploaded", {"count": len(results), "files": ", ".join(r["blob_name"] for r in results)})
+        action_col1, action_col2 = st.columns(2)
+        with action_col1:
+            st.download_button(
+                label="⬇ Download CSV",
+                data=_build_csv(results),
+                file_name=f"invoices_{date.today().isoformat()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with action_col2:
+            if st.button("💬 Chat now →", use_container_width=True, type="primary"):
+                st.switch_page("pages/2_Chat.py")
+
+
+def _run_cloud_upload(uploaded_files) -> None:
+    """Upload to Azure Blob Storage and poll AI Search for extraction results."""
     st.subheader("Uploading…")
     upload_errors: dict[str, str] = {}
 
@@ -134,7 +184,6 @@ if st.button("Upload and process", type="primary"):
     if not successful_uploads:
         st.stop()
 
-    # --- Polling phase -------------------------------------------------------
     st.subheader("Waiting for extraction…")
     st.caption("The Azure Function is processing each file. This usually takes 10–30 seconds.")
 
@@ -169,12 +218,10 @@ if st.button("Upload and process", type="primary"):
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
-    # Populate timed_out for any files that weren't found before the loop exited.
     for blob_name in successful_uploads:
         if blob_name not in found:
             timed_out.add(blob_name)
 
-    # Final render after loop
     with results_placeholder.container():
         for blob_name in successful_uploads:
             if blob_name in found:
@@ -188,7 +235,6 @@ if st.button("Upload and process", type="primary"):
             else:
                 st.warning(f"⚠ **{blob_name}** — timed out, may still be processing")
 
-    # --- Actions -------------------------------------------------------------
     if found:
         completed_records = list(found.values())
         csv_filename = f"invoices_{date.today().isoformat()}.csv"
@@ -205,3 +251,39 @@ if st.button("Upload and process", type="primary"):
         with action_col2:
             if st.button("💬 Chat now →", use_container_width=True, type="primary"):
                 st.switch_page("pages/2_Chat.py")
+
+
+# --- Page layout -------------------------------------------------------------
+
+if "tracked_upload" not in st.session_state:
+    track("page_view", {"page": "upload"})
+    st.session_state.tracked_upload = True
+
+if st.button("← Home"):
+    st.switch_page("app.py")
+
+st.header("Upload Invoices", divider="gray")
+st.caption("Select one or more invoice files. Use Cmd+click (Mac) or Ctrl+click (Windows) to select multiple.")
+
+if not IS_LOCAL_MODE and not STORAGE_ACCOUNT:
+    st.error(
+        "STORAGE_ACCOUNT_NAME is not set in your `.env`. "
+        "Add it and restart the app."
+    )
+    st.stop()
+
+uploaded_files = st.file_uploader(
+    "Invoice files",
+    type=["pdf", "png", "jpg", "jpeg"],
+    accept_multiple_files=True,
+    label_visibility="collapsed",
+)
+
+if not uploaded_files:
+    st.stop()
+
+if st.button("Upload and process", type="primary"):
+    if IS_LOCAL_MODE:
+        _run_local_extraction(uploaded_files)
+    else:
+        _run_cloud_upload(uploaded_files)
