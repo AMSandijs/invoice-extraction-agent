@@ -50,13 +50,13 @@ with st.sidebar:
             "(`cd infra && tofu output`), and sign in with `az login`."
         )
     else:
-        agent: InvoiceAgent = st.session_state.agent
+        agent = st.session_state.agent
         stats = agent.get_stats()
         if not stats:
-            st.error("Could not reach the AI Search index.")
-            st.info("Check `SEARCH_ENDPOINT` in `.env` and that `az login` has run.")
+            st.error("Could not reach the invoice index.")
+            st.info("Check your `.env` configuration and authentication.")
         else:
-            st.success("Connected to AI Search")
+            st.success("Connected to invoice index")
             st.subheader("Index")
             st.metric("Invoices indexed", stats.get("total_invoices", "—"))
             currencies = ", ".join(stats.get("currencies") or [])

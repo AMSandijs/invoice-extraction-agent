@@ -7,6 +7,7 @@ from contextlib import contextmanager
 _DB_PATH = os.environ.get("LOCAL_DB_PATH") or os.path.join(
     os.path.dirname(__file__), "data", "invoices.db"
 )
+# _DB_PATH is relative to the module file, not the cwd — data/ always lives in the repo root.
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS invoices (

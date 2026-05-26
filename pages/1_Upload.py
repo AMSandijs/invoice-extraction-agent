@@ -59,7 +59,7 @@ if "messages" not in st.session_state:
 
 
 def _poll_for_blobs(pending: list[str]) -> dict[str, dict]:
-    """Scan AI Search once and return all docs whose blob_name is in pending."""
+    """Scan AI Search once and return all docs whose blob_name is in pending. Cloud mode only."""
     if st.session_state.agent is None:
         return {}
     results = st.session_state.agent.search_client.search(

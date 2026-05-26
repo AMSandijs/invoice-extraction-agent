@@ -75,7 +75,7 @@ class LocalInvoiceAgent:
             row = dict(meta)
             row["content"] = doc
             for field in ("total_amount", "subtotal", "tax_amount"):
-                if row.get(field):
+                if row.get(field) not in (None, "", "None"):
                     try:
                         row[field] = float(row[field])
                     except ValueError:
