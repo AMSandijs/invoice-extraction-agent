@@ -53,3 +53,6 @@ function_app/local.settings.json
 .superpowers/
 .azure/
 analytics.py
+
+# Local mode data (SQLite + ChromaDB)
+data/
