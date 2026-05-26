@@ -235,6 +235,106 @@ Open [http://localhost:8501](http://localhost:8501).
 
 ---
 
+### Local mode (no cloud infrastructure)
+
+Local mode replaces Azure Cosmos DB and Azure AI Search with SQLite + ChromaDB running on your machine. Azure OpenAI (GPT-4o + embeddings) is still used — you just need an API key instead of managed identity. No Azure subscription, no deployment, no cost beyond API calls.
+
+#### How it works
+
+```
+Upload screen  →  extractor.py (inline, no Function App)
+                       ↓
+               SQLite  (./data/invoices.db)
+               ChromaDB (./data/chroma/)
+                       ↓
+Chat screen    →  LocalInvoiceAgent  →  Azure OpenAI (GPT-4o)
+```
+
+The app detects which mode to use automatically:
+- `SEARCH_ENDPOINT` **set** → cloud mode (Azure AI Search + Cosmos DB)
+- `SEARCH_ENDPOINT` **not set** → local mode (SQLite + ChromaDB)
+
+#### Setup
+
+**1. Get an Azure OpenAI API key**
+
+In the [Azure Portal](https://portal.azure.com), open your Azure OpenAI resource → **Keys and Endpoint** → copy Key 1 and the endpoint URL.
+
+**2. Configure environment**
+
+macOS / Linux:
+```bash
+cp .env.local.sample .env
+```
+
+Windows (Command Prompt):
+```cmd
+copy .env.local.sample .env
+```
+
+Fill in `.env`:
+```env
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_GPT_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-large
+AZURE_OPENAI_API_VERSION=2024-12-01-preview
+```
+
+Leave `SEARCH_ENDPOINT`, `STORAGE_ACCOUNT_NAME`, and `COSMOS_ENDPOINT` **unset** — their absence is what triggers local mode.
+
+**3. Install dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+Also install poppler (required by pdf2image for scanned PDFs):
+```bash
+# macOS
+brew install poppler
+
+# Ubuntu / Debian
+sudo apt-get install poppler-utils
+
+# Windows — download from https://github.com/oschwartz10612/poppler-windows/releases
+# and add the bin/ folder to your PATH
+```
+
+**4. Run**
+
+```bash
+streamlit run app.py
+```
+
+Open [http://localhost:8501](http://localhost:8501). The first upload will take a few seconds longer as ChromaDB initialises.
+
+#### What's different in local mode
+
+| | Cloud mode | Local mode |
+|---|---|---|
+| **File storage** | Azure Blob Storage | Temp file only (not saved) |
+| **Extraction pipeline** | Azure Function (async) | In-process, synchronous |
+| **Metadata store** | Azure Cosmos DB | SQLite (`./data/invoices.db`) |
+| **Vector store** | Azure AI Search | ChromaDB (`./data/chroma/`) |
+| **Auth** | Managed identity (no keys) | API key in `.env` |
+| **Upload feedback** | Polls until extracted | Immediate (inline) |
+| **Supplier name (EN)** | Translated field | Same as supplier_name |
+
+Data persists between sessions in `./data/` (gitignored). Delete the folder to start fresh.
+
+#### Scaling up from local mode
+
+Local mode is designed for a single user or small team. When you need more:
+
+- **More users** → deploy to Azure (run `./deploy.sh`) — no code changes required
+- **More invoices** → ChromaDB handles thousands; AI Search handles millions
+- **Team access** → the cloud deployment uses managed identity and RBAC, so you can add users without sharing credentials
+- **Audit trail** → switch to Cosmos DB to get built-in soft-delete and Change Feed history
+
+---
+
 ### App screens
 
 | Screen | What it does |
