@@ -10,6 +10,7 @@ pandas>=2.0.0           # Tabular output / CSV export
 
 # --- RAG agent (agent.py + app.py, Phase 2) ---
 streamlit>=1.35.0               # Browser chat UI
+chromadb>=0.5.0                 # Local vector store for local mode
 azure-search-documents>=11.5.0  # Azure AI Search hybrid retrieval
 azure-identity>=1.17.0          # AAD auth (DefaultAzureCredential)
 azure-storage-blob>=12.19.0     # Direct blob upload from upload screen
