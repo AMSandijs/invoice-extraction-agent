@@ -15,7 +15,8 @@ azure-identity>=1.17.0          # AAD auth (DefaultAzureCredential)
 azure-storage-blob>=12.19.0     # Direct blob upload from upload screen
 azure-cosmos>=4.5.0             # Cosmos DB client (sync button, rebuild script)
 python-dotenv>=1.0.0            # Load endpoint config from .env
-applicationinsights>=0.11.10    # Azure Application Insights telemetry
+
+
 
 # --- Notes ---
 # pdf2image also requires poppler on your system:

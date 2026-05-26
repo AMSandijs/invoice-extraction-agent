@@ -88,9 +88,14 @@ with st.sidebar:
 
 st.header("Invoice Assistant", divider="gray")
 
+def _md(text: str) -> None:
+    """Render markdown with dollar signs escaped to prevent Streamlit LaTeX mode."""
+    st.markdown(text.replace("$", r"\$"))
+
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+        _md(msg["content"])
         if msg["role"] == "assistant" and msg.get("results"):
             with st.expander(
                 f"📋 Retrieved invoices ({len(msg['results'])})", expanded=False
@@ -115,8 +120,12 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Searching invoices…"):
             response = st.session_state.agent.ask(user_input)
-        track("chat_message", {"question": user_input[:200]})
-        st.markdown(response.answer)
+        track("chat_message", {
+            "question": user_input,
+            "answer": response.answer[:1000],
+            "results_count": str(len(response.results or [])),
+        })
+        _md(response.answer)
         if response.results:
             with st.expander(
                 f"📋 Retrieved invoices ({len(response.results)})", expanded=False
