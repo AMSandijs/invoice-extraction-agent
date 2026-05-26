@@ -87,3 +87,24 @@ def test_ask_error_is_graceful():
     response = agent.ask("What invoices exist?")
     assert isinstance(response.answer, str)
     assert response.error is None
+
+
+def test_build_agent_uses_local_when_no_search_endpoint(monkeypatch):
+    monkeypatch.delenv("SEARCH_ENDPOINT", raising=False)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://fake.openai.azure.com/")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "fake-key")
+    monkeypatch.setenv("AZURE_OPENAI_GPT_DEPLOYMENT", "gpt-4o")
+    monkeypatch.setenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-large")
+
+    import chromadb as _chroma
+    monkeypatch.setattr(_chroma, "PersistentClient", lambda **kw: _chroma.EphemeralClient())
+
+    # Prevent load_dotenv() from re-populating SEARCH_ENDPOINT from .env on reload
+    import dotenv
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda **kw: None)
+
+    from local_agent import LocalInvoiceAgent
+    import importlib, agent as _agent_mod
+    importlib.reload(_agent_mod)
+    agent_instance = _agent_mod.build_agent()
+    assert isinstance(agent_instance, LocalInvoiceAgent)

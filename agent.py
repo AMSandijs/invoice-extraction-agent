@@ -164,8 +164,16 @@ class InvoiceAgent:
             return {}
 
 
-def build_agent() -> InvoiceAgent:
-    """Construct an InvoiceAgent from environment config, using AAD auth."""
+def build_agent():
+    """Construct an agent from environment config.
+
+    Returns a LocalInvoiceAgent (ChromaDB + SQLite) when SEARCH_ENDPOINT is
+    absent, or an InvoiceAgent (Azure AI Search) when it is set.
+    """
+    if not os.environ.get("SEARCH_ENDPOINT"):
+        from local_agent import build_local_agent
+        return build_local_agent()
+
     search_endpoint = _require_env("SEARCH_ENDPOINT")
     search_index = _require_env("SEARCH_INDEX")
     openai_endpoint = _require_env("AZURE_OPENAI_ENDPOINT")
