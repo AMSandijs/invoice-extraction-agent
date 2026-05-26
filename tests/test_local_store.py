@@ -6,6 +6,12 @@ os.environ["LOCAL_DB_PATH"] = ":memory:"
 
 import local_store
 
+
+@pytest.fixture(autouse=True)
+def _clean_db():
+    local_store.delete_all()
+
+
 SAMPLE = {
     "id": "abc123",
     "blob_name": "test.pdf",
