@@ -80,7 +80,7 @@ with st.sidebar:
     if st.button("🗑️ Clear chat", use_container_width=True):
         st.session_state.messages = []
         if st.session_state.agent:
-            st.session_state.agent._history = []
+            st.session_state.agent.clear_history()
         st.rerun()
 
 

@@ -136,7 +136,13 @@ class InvoiceAgent:
             )
         self._history.append({"role": "user", "content": question})
         self._history.append({"role": "assistant", "content": answer})
+        if len(self._history) > HISTORY_LIMIT:
+            self._history = self._history[-HISTORY_LIMIT:]
         return AgentResponse(answer=answer, results=docs)
+
+    def clear_history(self) -> None:
+        """Reset the conversation history."""
+        self._history = []
 
     def get_stats(self) -> dict:
         """Return index doc count + distinct currencies.

@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from agent import build_agent, InvoiceAgent, SELECT_FIELDS
+from agent import build_agent, InvoiceAgent, SELECT_FIELDS, HISTORY_LIMIT
 
 
 @pytest.fixture
@@ -156,3 +156,28 @@ def test_get_stats_returns_empty_on_failure(mock_clients):
     agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
 
     assert agent.get_stats() == {}
+
+
+def test_history_trimmed_to_history_limit(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = []
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    # Each ask() appends 2 entries; ask enough times to exceed HISTORY_LIMIT.
+    turns = HISTORY_LIMIT // 2 + 2
+    for i in range(turns):
+        agent.ask(f"question {i}")
+
+    assert len(agent._history) == HISTORY_LIMIT
+
+
+def test_clear_history_resets_history(mock_clients):
+    search, openai = mock_clients
+    search.search.return_value = []
+    agent = InvoiceAgent(search, openai, "gpt-4o", "emb-deploy")
+
+    agent.ask("some question")
+    assert len(agent._history) > 0
+
+    agent.clear_history()
+    assert agent._history == []
