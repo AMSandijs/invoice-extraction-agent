@@ -6,11 +6,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from agent import build_agent
-
-try:
-    from analytics import track
-except ImportError:
-    def track(event, props=None): pass
+from csv_safe import sanitize_cell
 
 load_dotenv()
 
@@ -26,10 +22,6 @@ st.markdown(
     '<style>[data-testid="stSidebarNav"]{display:none}</style>',
     unsafe_allow_html=True,
 )
-
-if "tracked_home" not in st.session_state:
-    track("page_view", {"page": "home"})
-    st.session_state.tracked_home = True
 
 # Pre-build the agent so session state is warm for the chat page.
 if "agent" not in st.session_state:
@@ -191,7 +183,7 @@ with col:
                     writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
                     writer.writeheader()
                     for r in records:
-                        writer.writerow({k: (r.get(k) or "") for k in fields})
+                        writer.writerow({k: sanitize_cell(r.get(k)) for k in fields})
                     st.session_state["admin_csv"] = buf.getvalue().encode("utf-8")
                     st.rerun()
 

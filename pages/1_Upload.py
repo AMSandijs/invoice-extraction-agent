@@ -14,11 +14,7 @@ from dotenv import load_dotenv
 
 from agent import build_agent
 from uploader import upload_blob
-
-try:
-    from analytics import track
-except ImportError:
-    def track(event, props=None): pass
+from csv_safe import sanitize_cell
 
 load_dotenv()
 
@@ -80,7 +76,7 @@ def _build_csv(records: list[dict]) -> bytes:
     writer = csv.DictWriter(buf, fieldnames=RESULT_FIELDS, extrasaction="ignore")
     writer.writeheader()
     for r in records:
-        writer.writerow({k: (r.get(k) or "") for k in RESULT_FIELDS})
+        writer.writerow({k: sanitize_cell(r.get(k)) for k in RESULT_FIELDS})
     return buf.getvalue().encode("utf-8")
 
 
@@ -145,7 +141,6 @@ def _run_local_extraction(uploaded_files) -> None:
         progress.progress((i + 1) / len(uploaded_files))
 
     if results:
-        track("invoices_uploaded", {"count": len(results), "files": ", ".join(r["blob_name"] for r in results)})
         action_col1, action_col2 = st.columns(2)
         with action_col1:
             st.download_button(
@@ -174,8 +169,6 @@ def _run_cloud_upload(uploaded_files) -> None:
         upload_progress.progress((i + 1) / len(uploaded_files))
 
     successful_uploads = [f.name for f in uploaded_files if f.name not in upload_errors]
-    if successful_uploads:
-        track("invoices_uploaded", {"count": len(successful_uploads), "files": ", ".join(successful_uploads)})
 
     if upload_errors:
         for name, err in upload_errors.items():
@@ -254,10 +247,6 @@ def _run_cloud_upload(uploaded_files) -> None:
 
 
 # --- Page layout -------------------------------------------------------------
-
-if "tracked_upload" not in st.session_state:
-    track("page_view", {"page": "upload"})
-    st.session_state.tracked_upload = True
 
 if st.button("← Home"):
     st.switch_page("app.py")

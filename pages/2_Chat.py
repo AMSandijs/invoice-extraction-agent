@@ -4,11 +4,6 @@ import streamlit as st
 
 from agent import build_agent, InvoiceAgent
 
-try:
-    from analytics import track
-except ImportError:
-    def track(event, props=None): pass
-
 st.set_page_config(
     page_title="Invoice Assistant · Chat",
     page_icon="🧾",
@@ -18,10 +13,6 @@ st.set_page_config(
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-if "tracked_chat" not in st.session_state:
-    track("page_view", {"page": "chat"})
-    st.session_state.tracked_chat = True
 
 if "agent" not in st.session_state:
     try:
@@ -120,11 +111,6 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Searching invoices…"):
             response = st.session_state.agent.ask(user_input)
-        track("chat_message", {
-            "question": user_input,
-            "answer": response.answer[:1000],
-            "results_count": str(len(response.results or [])),
-        })
         _md(response.answer)
         if response.results:
             with st.expander(

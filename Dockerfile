@@ -16,7 +16,7 @@ COPY pages/ pages/
 COPY agent.py .
 COPY uploader.py .
 COPY sync.py .
-COPY analytics.py .
+COPY csv_safe.py .
 COPY function_app/search_indexer.py function_app/search_indexer.py
 
 EXPOSE 8501

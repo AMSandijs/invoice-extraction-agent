@@ -14,6 +14,8 @@ from azure.search.documents import SearchClient
 from azure.search.documents.indexes import SearchIndexClient
 from openai import AzureOpenAI
 
+from csv_safe import sanitize_cell
+
 # Allow importing search_indexer from the function_app package.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "function_app"))
 import search_indexer  # noqa: E402  (import after path manipulation)
@@ -174,5 +176,5 @@ def export_csv(
     writer = csv.DictWriter(buf, fieldnames=CSV_FIELDS, extrasaction="ignore")
     writer.writeheader()
     for r in records:
-        writer.writerow({k: (r.get(k) or "") for k in CSV_FIELDS})
+        writer.writerow({k: sanitize_cell(r.get(k)) for k in CSV_FIELDS})
     return buf.getvalue().encode("utf-8")
